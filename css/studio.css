@@ -136,3 +136,27 @@ dialog.notebook[open] { display: flex; flex-direction: column; }
   .wz-tab { white-space: nowrap; }
   .wz-row { grid-template-columns: minmax(0, 1fr) 90px 36px; }
 }
+
+/* ───────── Aulas ───────── */
+.cs-player { margin-bottom: 14px; }
+.cs-player iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 10px; background: var(--ink); }
+.cs-player-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; font-size: 13px; color: var(--ink-2); }
+.cs-stages { margin: 0; padding: 0; list-style: none; }
+.cs-stage { padding: 12px 0 14px; border-top: 1.5px solid var(--line-soft); }
+.cs-stage:first-child { border-top: 0; padding-top: 0; }
+.cs-stage h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--display); font-weight: 400; font-size: 16px; }
+.cs-num { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 13px; }
+.cs-goal { margin: 4px 0 8px; font-size: 13.5px; color: var(--ink-2); }
+.cs-videos { margin: 0; padding: 0; list-style: none; }
+.cs-video { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; }
+.cs-play { flex: none; width: 30px; height: 30px; border: 1.5px solid var(--ink); border-radius: 50%; background: var(--marker); color: var(--ink); font-size: 11px; cursor: pointer; }
+.cs-play:hover { background: var(--marker-soft); }
+.cs-info { flex: 1; min-width: 0; font-size: 13.5px; }
+.cs-info b { display: block; }
+.cs-info small { display: block; font-size: 12.5px; color: var(--ink-2); }
+.cs-link { flex: none; align-self: center; font-size: 12.5px; color: var(--ink-2); }
+.cs-more { margin: 2px 0 8px; font-size: 13px; }
+.cs-more summary { cursor: pointer; font-weight: 700; color: var(--ink-2); }
+.cs-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+.cs-check { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; font-size: 13px; cursor: pointer; }
+.nb-lesson { display: block; margin-top: 6px; padding-left: 0; text-align: left; white-space: normal; }

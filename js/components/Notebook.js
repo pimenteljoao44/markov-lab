@@ -2,9 +2,10 @@
 import { escapeHtml, renderTex } from '../util.js';
 import { TOPICS, TIPS } from '../coach/tips.js';
 import { tipContent } from '../coach/Coach.js';
+import { MOMENTS, VIDEOS } from '../learn/course.js';
 
 export class Notebook {
-  constructor(coach) {
+  constructor(coach, { onLesson } = {}) {
     this.coach = coach;
     this.dlg = document.createElement('dialog');
     this.dlg.className = 'notebook';
@@ -12,6 +13,11 @@ export class Notebook {
     document.body.appendChild(this.dlg);
     this.dlg.addEventListener('click', (e) => {
       if (e.target === this.dlg || e.target.closest('[data-close]')) this.dlg.close();
+      const lesson = e.target.closest('[data-lesson]');
+      if (lesson) {
+        this.dlg.close();
+        onLesson?.(lesson.dataset.lesson);
+      }
       if (e.target.closest('[data-reset]')) {
         this.dlg.close();
         coach.reset();
@@ -70,7 +76,11 @@ export class Notebook {
     const box = d.querySelector('.nb-body');
     if (box.childElementCount) return;
     const { body, math } = tipContent(d.dataset.id);
-    box.innerHTML = `${body}${math ? `<div class="nb-math">${math}</div>` : ''}`;
+    const moment = MOMENTS[d.dataset.id];
+    const lesson = moment
+      ? `<button type="button" class="text-btn nb-lesson" data-lesson="${d.dataset.id}">▶ Ver na aula: ${escapeHtml(VIDEOS[moment.v].title)}${moment.at === '0:00' ? '' : ` (${moment.at})`}</button>`
+      : '';
+    box.innerHTML = `${body}${math ? `<div class="nb-math">${math}</div>` : ''}${lesson}`;
     renderTex(box);
   }
 

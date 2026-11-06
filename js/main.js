@@ -18,6 +18,8 @@ import { ChallengeDock } from './components/ChallengeDock.js';
 import { StoryNav } from './components/StoryNav.js';
 import { ModelStudio } from './components/ModelStudio.js';
 import { Notebook } from './components/Notebook.js';
+import { CoursePanel } from './components/CoursePanel.js';
+import { buildModel } from './models/catalog.js';
 import { toast, undoToast, dismissActionToasts } from './components/Toast.js';
 import { Coach } from './coach/Coach.js';
 import { connectCoach, helpDot } from './coach/api.js';
@@ -81,7 +83,25 @@ restoreHistories(savedUndo);
 // ── balões
 const coach = new Coach({ onSeenChange: () => updateNotebookCount() });
 connectCoach(coach);
-const notebook = new Notebook(coach);
+const course = new CoursePanel({
+  onProgress: updateCourseCount,
+  onPractice({ level: target, challenge, model, wizard }) {
+    if (getState().meta.level !== target) switchLevel(target);
+    if (challenge) update((st) => (st.challenges.active[target] = challenge), 'challenge');
+    if (model) {
+      actions.loadChain(buildModel(model));
+      undoToast('Modelo aberto para praticar', { sub: 'O anterior pode ser recuperado.' });
+    }
+    if (wizard) studio.openWizard();
+  },
+});
+function updateCourseCount() {
+  const { done, total } = course.progress();
+  $('course-count').textContent = `${done}/${total}`;
+}
+updateCourseCount();
+$('btn-course').addEventListener('click', () => course.open());
+const notebook = new Notebook(coach, { onLesson: (moment) => course.open({ moment }) });
 
 function updateNotebookCount() {
   const { seen, total } = coach.seenCount();
@@ -111,7 +131,7 @@ new ChallengeDock($('challenge-dock'), {
     }
   },
 });
-new StoryNav($('story-nav'), $('story-card'), $('xp'), { onSelect: switchLevel });
+new StoryNav($('story-nav'), $('story-card'), $('xp'), { onSelect: switchLevel, onCourse: (stage) => course.open({ stage }) });
 
 const studio = new ModelStudio({
   onCreate(chain) {

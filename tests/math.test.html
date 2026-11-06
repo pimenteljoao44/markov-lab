@@ -20,6 +20,8 @@ import { normalizeRow, fmtP, pct, keepFocus } from '../js/util.js';
 import { ChainHistory } from '../js/models/history.js';
 import { encodeShare, decodeShare } from '../js/models/share.js';
 import { byId } from '../js/challenges/definitions.js';
+import { COURSE, VIDEOS, MOMENTS, STAGE_FOR_LEVEL, toSeconds, embedUrl, watchUrl, essentialTime } from '../js/learn/course.js';
+import { notebookTips, TIPS } from '../js/coach/tips.js';
 import { pluralPt, sanitizeMeta } from '../js/vocab.js';
 import { sanitizeChain } from '../js/models/chain.js';
 import { MODELS, buildModel } from '../js/models/catalog.js';
@@ -358,6 +360,49 @@ t('link: abre o formato antigo e o que um aplicativo codificou', () => {
 t('link corrompido é recusado', () => {
   throws(() => decodeShare('#m=%%%'), /./);
   throws(() => decodeShare(`#m=${btoa('{"states":[]}')}`), /states|matrix|estados/);
+});
+
+// ── aulas
+const SEM_AULA = ['unit', 'weights', 'trail', 'more-units', 'jar', 'speed', 'tv', 'doubly', 'good-step', 'homogeneous', 'estimate', 'state-added', 'model-ready', 'click-anything'];
+t('aulas: todo vídeo tem endereço e duração válidos', () => {
+  for (const [id, v] of Object.entries(VIDEOS)) {
+    assert(/^[\w-]{11}$/.test(id), `id: ${id}`);
+    assert(/^\d+:\d\d$/.test(v.length) && v.title && v.author, `dados: ${id}`);
+  }
+});
+t('aulas: etapas apontam para vídeos e trechos que existem', () => {
+  assert(new Set(COURSE.map((s) => s.id)).size === COURSE.length, 'etapa repetida');
+  for (const s of COURSE) {
+    assert(s.watch.length && s.deeper.length && s.practice.length && s.goal, `etapa incompleta: ${s.id}`);
+    s.watch.forEach((v) => assert(VIDEOS[v], `vídeo: ${v}`));
+    s.deeper.forEach((d) => assert(VIDEOS[d.v] && toSeconds(d.at) < toSeconds(VIDEOS[d.v].length), `trecho: ${d.v} ${d.at}`));
+  }
+  Object.values(STAGE_FOR_LEVEL).forEach((id) => assert(COURSE.some((s) => s.id === id), `nível aponta para ${id}`));
+});
+t('aulas: cada prática leva a um desafio ou modelo que existe', () => {
+  for (const s of COURSE) {
+    for (const p of s.practice) {
+      assert([1, 2, 3].includes(p.level), `nível: ${p.label}`);
+      if (p.challenge) assert(byId[p.challenge]?.level === p.level, `desafio: ${p.challenge} no nível ${p.level}`);
+      if (p.model) assert(MODELS.some((m) => m.id === p.model && m.levels.includes(p.level)), `modelo: ${p.model}`);
+    }
+  }
+});
+t('aulas: todo conceito do Caderno tem trecho ou está listado como sem aula', () => {
+  const ids = notebookTips().map(([id]) => id);
+  for (const [id, m] of Object.entries(MOMENTS)) {
+    assert(TIPS[id], `conceito inexistente: ${id}`);
+    assert(VIDEOS[m.v] && toSeconds(m.at) < toSeconds(VIDEOS[m.v].length), `trecho de ${id}`);
+    assert(!SEM_AULA.includes(id), `${id} aparece nas duas listas`);
+  }
+  const soltos = ids.filter((id) => !MOMENTS[id] && !SEM_AULA.includes(id));
+  assert(!soltos.length, `sem decisão: ${soltos.join(', ')}`);
+});
+t('aulas: endereços começam no segundo certo', () => {
+  assert(toSeconds('1:02:03') === 3723 && toSeconds('4:09') === 249);
+  assert(embedUrl('abc', '4:09').startsWith('https://www.youtube-nocookie.com/embed/abc?start=249'));
+  assert(watchUrl('abc', '4:09') === 'https://www.youtube.com/watch?v=abc&t=249s');
+  assert(/^\d+h\d\d$/.test(essentialTime()), essentialTime());
 });
 
 // ── foco do teclado

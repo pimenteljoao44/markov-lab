@@ -9,7 +9,8 @@
   .switch { min-height: 24px; }
   .head-in { min-height: 24px; }
   details > summary { min-height: 24px; }
-  .wz-check input { width: 24px; height: 24px; margin: 0; }
+  .wz-check input, .cs-check input { width: 24px; height: 24px; margin: 0; }
+  .cs-link { display: inline-flex; align-items: center; min-height: 24px; }
 
   /* Bolinhas dos desafios: o desenho continua pequeno, a área de toque cresce. */
   .ch-dots { gap: 2px; }
@@ -30,6 +31,9 @@
 }
 
 @media (max-width: 720px) {
+  .cs-video { flex-wrap: wrap; }
+  .cs-link { margin-left: 40px; align-self: auto; }
+
   /* As abas dividem a largura: em telas de 320 px, elas passariam da borda. */
   .tabs { gap: 2px; }
   .tab { flex: 1 1 0; min-width: 0; justify-content: center; gap: 5px; padding: 7px 6px 8px; }

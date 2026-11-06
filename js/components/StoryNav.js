@@ -4,9 +4,10 @@ import { LEVELS } from '../levels/index.js';
 import { forLevel } from '../challenges/definitions.js';
 import { htmlVocab } from '../vocab.js';
 import { keepFocus } from '../util.js';
+import { STAGE_FOR_LEVEL } from '../learn/course.js';
 
 export class StoryNav {
-  constructor(navEl, lessonEl, xpEl, { onSelect }) {
+  constructor(navEl, lessonEl, xpEl, { onSelect, onCourse }) {
     this.nav = navEl;
     this.lesson = lessonEl;
     this.xp = xpEl;
@@ -16,6 +17,8 @@ export class StoryNav {
       if (b) onSelect(+b.dataset.level);
     });
     lessonEl.addEventListener('click', (e) => {
+      const lesson = e.target.closest('[data-course]');
+      if (lesson) onCourse(lesson.dataset.course);
       if (!e.target.closest('.lesson-toggle')) return;
       const { level } = getState().meta;
       this.collapsed[level] = !this.collapsed[level];
@@ -55,7 +58,7 @@ export class StoryNav {
     keepFocus(this.lesson, () => {
       this.lesson.innerHTML = `
       <h2>${L.heading}</h2>
-      ${col ? '' : `<p>${L.story(htmlVocab(s.chain))}</p>`}
+      ${col ? '' : `<p>${L.story(htmlVocab(s.chain))} <button type="button" class="text-btn inline" data-course="${STAGE_FOR_LEVEL[s.meta.level]}">▶ Ver a aula antes de praticar</button></p>`}
       <button type="button" class="lesson-toggle" aria-expanded="${!col}">${col ? 'mostrar' : 'esconder'}</button>`;
     });
   }

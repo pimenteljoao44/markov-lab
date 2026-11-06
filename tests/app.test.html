@@ -21,7 +21,8 @@ const KEY = 'markovlab:v3';
 const COACH = 'markovlab:coach';
 const BASE = new URL('../', location.href).href;
 const out = document.getElementById('out');
-const backup = { [KEY]: localStorage.getItem(KEY), [COACH]: localStorage.getItem(COACH) };
+const COURSE_KEY = 'markovlab:course';
+const backup = { [KEY]: localStorage.getItem(KEY), [COACH]: localStorage.getItem(COACH), [COURSE_KEY]: localStorage.getItem(COURSE_KEY) };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, what = 'condição', ms = 4000) {
@@ -97,6 +98,7 @@ async function prepare(storage, coach) {
   frame?.remove();
   await sleep(0);
   localStorage.removeItem(KEY);
+  localStorage.removeItem(COURSE_KEY);
   if (coach) localStorage.removeItem(COACH);
   else localStorage.setItem(COACH, JSON.stringify({ enabled: false, seen: [] }));
   if (storage) localStorage.setItem(KEY, JSON.stringify(storage));
@@ -572,6 +574,94 @@ const TESTS = [
     assert($('[data-explain]').textContent, 'o erro precisa ser explicado');
     buttons().find((b) => b.textContent === '40,0%').click();
     assert(/concluído/.test($('.ch-tag').textContent), 'a resposta certa conclui');
+  }],
+
+  // ── Aulas
+  ['aulas: abrir a trilha não pede nada ao YouTube', async () => {
+    await boot();
+    $('#btn-course').click();
+    const d = $('dialog.course');
+    assert(d.open, 'a janela abre');
+    same(d.querySelectorAll('.cs-stage').length, 7, 'etapas');
+    assert(!d.querySelector('iframe'), 'sem vídeo antes do clique');
+    const external = win().performance.getEntriesByType('resource').map((r) => r.name).filter((u) => new URL(u).origin !== win().location.origin);
+    same(external.length, 0, `pedidos externos (${external.join(', ')})`);
+    const link = d.querySelector('.cs-link');
+    same(link.target, '_blank', 'o link abre em outra aba');
+    assert(link.rel.includes('noopener'), 'link seguro');
+  }],
+  ['aulas: assistir abre o vídeo, e fechar a janela para o som', async () => {
+    await boot();
+    $('#btn-course').click();
+    const d = $('dialog.course');
+    const b = d.querySelector('.cs-more [data-at="4:09"]');
+    b.click();
+    const frame2 = d.querySelector('[data-player] iframe');
+    assert(frame2, 'o vídeo aparece');
+    assert(frame2.src.startsWith(`https://www.youtube-nocookie.com/embed/${b.dataset.play}?start=249`), frame2.src);
+    same(frame2.getAttribute('referrerpolicy'), 'strict-origin-when-cross-origin', 'política de origem');
+    d.close();
+    await until(() => !d.querySelector('iframe'), 'fechar a janela remover o vídeo');
+  }],
+  ['aulas: o progresso fica salvo e aparece no botão', async () => {
+    await boot();
+    same($('#course-count').textContent, '0/7', 'contador inicial');
+    $('#btn-course').click();
+    const box = $('dialog.course [data-done="matriz"]');
+    box.checked = true;
+    box.dispatchEvent(new (win().Event)('change', { bubbles: true }));
+    same($('#course-count').textContent, '1/7', 'contador');
+    assert(/1 de 7/.test($('[data-course-count]').textContent), 'texto da janela');
+    await reload();
+    same($('#course-count').textContent, '1/7', 'depois do F5');
+    $('#btn-course').click();
+    assert($('dialog.course [data-done="matriz"]').checked, 'caixa marcada');
+  }],
+  ['aulas: praticar leva ao nível e ao desafio certos', async () => {
+    await boot({ storage: { level: 1 } });
+    $('#btn-course').click();
+    $('dialog.course [data-practice="classes:0"]').click();
+    assert(!$('dialog.course').open, 'a janela fecha');
+    assert($('[data-level="2"]').classList.contains('active'), 'nível 2');
+    assert(/Relógio quebrado/.test($('.ch-title').textContent), $('.ch-title').textContent);
+    $('#btn-course').click();
+    $('dialog.course [data-practice="absorcao:1"]').click();
+    assert($('[data-level="3"]').classList.contains('active'), 'nível 3');
+    assert(/Ruína/.test($('#model-title').textContent), $('#model-title').textContent);
+    (await toastAction()).click();
+    assert(!/Ruína/.test($('#model-title').textContent), 'dá para desfazer');
+    $('#btn-course').click();
+    $('dialog.course [data-practice="modelar:1"]').click();
+    assert(wizardDialog().open, 'abre o assistente');
+  }],
+  ['aulas: a faixa da lição e o Caderno levam à aula certa', async () => {
+    await boot({ storage: { level: 2 } });
+    $('[data-course]').click();
+    same($('[data-course]').dataset.course, 'matriz', 'etapa do nível');
+    assert($('dialog.course').open, 'a faixa abre as aulas');
+    $('dialog.course').close();
+    $('#btn-notebook').click();
+    const item = $('dialog.notebook details[data-id="markov"]');
+    item.open = true;
+    const lesson = await until(() => item.querySelector('[data-lesson]'), 'o link da aula');
+    lesson.click();
+    assert(!$('dialog.notebook').open, 'o Caderno fecha');
+    const video = $('dialog.course [data-player] iframe');
+    assert(video && video.src.includes('wTXwmOBq3WI?start=249'), video?.src);
+    $('dialog.course').close();
+    assert(!$('dialog.notebook details[data-id="weights"] [data-lesson]'), 'conceito sem aula não mostra link');
+  }],
+  ['aulas: contraste e alvos de toque no celular', async () => {
+    await boot({ width: 375, height: 812 });
+    $('#btn-course').click();
+    const d = $('dialog.course');
+    d.querySelectorAll('details').forEach((x) => (x.open = true));
+    await settle();
+    const low = contrastFailures(d);
+    assert(!low.length, [...new Set(low)].join(' | '));
+    const small = smallTargets(d);
+    assert(!small.length, small.join(' | '));
+    assert(d.querySelector('.dlg-body').scrollWidth <= d.querySelector('.dlg-body').clientWidth + 1, 'nada corta na lateral');
   }],
 
   // ── 8. Sem depender de outros sites

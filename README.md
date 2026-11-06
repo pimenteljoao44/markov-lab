@@ -4,9 +4,11 @@ Um caderno interativo para **modelar qualquer problema** com cadeias de Markov: 
 
 ![Laboratório de Markov com um funil de vendas: potes enchendo, bolinhas nas setas e um balão explicando o nível do pote](docs/screenshot.jpg)
 
-Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do que você digita ou cola sai do seu computador, e a página não pede nada a outros sites.
+Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do que você digita ou cola sai do seu computador, e a página só fala com outro site se você clicar para assistir a uma aula no YouTube.
 
 ## O que dá para fazer
+
+**Assistir antes de praticar.** O botão **Aulas** reúne uma trilha de videoaulas gratuitas em português, em 7 etapas, com o que praticar no app depois de cada uma. O Caderno de teoria também aponta o trecho de aula que explica cada conceito, quando há um.
 
 **Modelar o seu problema**, de três jeitos:
 
@@ -82,6 +84,7 @@ Não há etapa de build. No repositório, vá em **Settings → Pages**, escolha
 | Pasta | Conteúdo |
 |---|---|
 | `js/math/` | Motor sem dependências de interface: classificação da cadeia, π, absorção, tempos de chegada e estimativa a partir de dados |
+| `js/learn/` | Trilha de aulas: vídeos, etapas e o trecho que explica cada conceito |
 | `js/models/` | Validação de modelos importados, catálogo da galeria, link compartilhável e histórico de desfazer |
 | `js/coach/` | Balões: catálogo de teoria (`tips.js`), quando cada um aparece (`triggers.js`) e exibição (`Coach.js`) |
 | `js/components/` | Diagrama (SVG e D3), bolinhas (Canvas), matriz, assistente, painéis e desafios |
