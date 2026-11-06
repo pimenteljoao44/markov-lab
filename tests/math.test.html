@@ -16,7 +16,7 @@ import { analyze } from '../js/math/analyze.js';
 import { inverse, solve, evolve } from '../js/math/linalg.js';
 import { distributionAfter, hittingStats } from '../js/math/query.js';
 import { parseSequences, estimateChain, parseTable, readHistory, timeKey } from '../js/math/estimate.js';
-import { normalizeRow, fmtP, pct } from '../js/util.js';
+import { normalizeRow, fmtP, pct, keepFocus } from '../js/util.js';
 import { ChainHistory } from '../js/models/history.js';
 import { encodeShare, decodeShare } from '../js/models/share.js';
 import { byId } from '../js/challenges/definitions.js';
@@ -26,12 +26,13 @@ import { MODELS, buildModel } from '../js/models/catalog.js';
 
 const out = document.getElementById('out');
 let passed = 0, failed = 0;
+const failures = [];
 const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
 const vecNear = (a, b, tol = 1e-6) => a.length === b.length && a.every((v, i) => near(v, b[i], tol));
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function t(name, fn) {
   try { fn(); passed++; out.innerHTML += `<span class="pass">✓ ${esc(name)}</span>\n`; }
-  catch (e) { failed++; out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`; }
+  catch (e) { failed++; failures.push(`${name}: ${e.message}`); out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`; }
 }
 function assert(c, msg = 'falhou') { if (!c) throw new Error(msg); }
 function throws(fn, re) {
@@ -339,9 +340,41 @@ t('link: ida e volta com acentos', () => {
   const c = decodeShare(hash);
   assert(c.meta.title === 'Previsão' && c.states[1].label === 'São' && near(c.matrix[1][0], 1 / 30000, 1e-15));
 });
+t('link: só usa caracteres seguros numa URL', () => {
+  const hash = encodeShare({ states: [{ label: '>>>???ÿÿÿ~~~' }, { label: 'B' }], matrix: [[1, 0], [0, 1]] });
+  assert(!/[+/=]/.test(hash.slice(3)), hash);
+  assert(decodeShare(hash).states[0].label === '>>>???ÿÿÿ~~~');
+});
+t('link: abre o formato antigo e o que um aplicativo codificou', () => {
+  const data = { states: [{ label: 'A' }, { label: 'B' }], matrix: [[1, 0], [0, 1]], meta: { title: 'xx' } };
+  let old = `#m=${btoa(JSON.stringify(data))}`;
+  while (!old.endsWith('=')) {
+    data.meta.title += 'x';
+    old = `#m=${btoa(JSON.stringify(data))}`;
+  }
+  assert(decodeShare(old).meta.title === data.meta.title);
+  assert(decodeShare(old.replace(/=+$/, (pad) => pad.replace(/=/g, '%3D'))).meta.title === data.meta.title);
+});
 t('link corrompido é recusado', () => {
   throws(() => decodeShare('#m=%%%'), /./);
   throws(() => decodeShare(`#m=${btoa('{"states":[]}')}`), /states|matrix|estados/);
+});
+
+// ── foco do teclado
+t('refazer um trecho da página mantém o foco no mesmo lugar', () => {
+  const box = document.createElement('div');
+  const fill = (a, b) => (box.innerHTML = `<button>${a}</button><button>${b}</button>`);
+  fill('1', '2');
+  document.body.appendChild(box);
+  box.children[1].focus();
+  keepFocus(box, () => fill('3', '4'));
+  assert(document.activeElement === box.children[1] && box.children[1].textContent === '4', document.activeElement.tagName);
+  keepFocus(box, () => (box.innerHTML = '<button>só um</button>'));
+  assert(document.activeElement === box.children[0], 'volta para o último que sobrou');
+  document.activeElement.blur();
+  keepFocus(box, () => fill('5', '6'));
+  assert(document.activeElement === document.body, 'sem foco dentro, não puxa o foco');
+  box.remove();
 });
 
 // ── quiz
@@ -406,6 +439,9 @@ t('todo modelo do catálogo é válido', () => {
 
 out.innerHTML += `\n<b class="${failed ? 'fail' : 'pass'}">${passed} passaram, ${failed} falharam</b>`;
 document.title = failed ? `FALHOU (${failed})` : `OK (${passed})`;
+if (new URLSearchParams(location.search).has('report')) {
+  fetch('/__report', { method: 'POST', body: JSON.stringify({ passed, failed, failures }) });
+}
 </script>
 </body>
 </html>

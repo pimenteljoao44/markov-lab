@@ -1,6 +1,6 @@
 // Diagnóstico explicado: cada classificação vem com o "porquê".
 import { subscribe, actions, update, getState } from '../store.js';
-import { escapeHtml, renderTex, pct, num } from '../util.js';
+import { escapeHtml, renderTex, pct, num, keepFocus } from '../util.js';
 import { htmlVocab } from '../vocab.js';
 import { helpDot } from '../coach/api.js';
 import { LEVELS } from '../levels/index.js';
@@ -164,7 +164,9 @@ export class InsightPanel {
     const theory = LEVELS[lvl].theory?.(s);
     if (theory) parts.push(`<details class="theory" ${this.open.has('theory') ? 'open' : ''} data-k="theory"><summary>A matemática por trás</summary><div class="body">${theory}</div></details>`);
 
-    this.el.innerHTML = parts.join('');
+    keepFocus(this.el, () => {
+      this.el.innerHTML = parts.join('');
+    });
     renderTex(this.el);
   }
 

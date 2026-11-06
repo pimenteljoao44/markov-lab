@@ -110,6 +110,15 @@ code { font-family: var(--mono); font-size: .92em; background: var(--line-soft);
   .graph-wrap { height: 58vh; min-height: 380px; }
 }
 
+/* Aparece só se os módulos não carregarem (veja index.html). */
+.boot-error {
+  position: fixed; left: 50%; top: 40%; z-index: 100; transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 32px)); padding: 16px 18px;
+  background: #fff; border: 1.5px solid var(--ink); border-left: 6px solid var(--pen); border-radius: 12px;
+  box-shadow: 0 4px 0 rgba(31, 42, 68, .2);
+}
+.boot-error b { display: block; margin-bottom: 4px; }
+
 /* Só fixa o desafio embaixo quando sobra altura: em tela baixa ele cobriria o diagrama. */
 @media (max-width: 1180px) and (min-width: 721px) and (min-height: 760px) {
   .dock { position: sticky; bottom: 0; z-index: 6; background: var(--page); }

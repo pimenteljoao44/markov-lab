@@ -1,0 +1,15 @@
+name: Testes
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # O Python e o Google Chrome já vêm na imagem ubuntu-latest: não há nada para instalar.
+      - name: Rodar as páginas de teste
+        run: python3 tests/run.py

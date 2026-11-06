@@ -1,5 +1,5 @@
 // Empírico (partículas) vs teórico μ₀Pᵗ — torna a Lei dos Grandes Números visível.
-import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
+import d3 from '../../vendor/d3/index.js';
 import { subscribe } from '../store.js';
 import { tvDistance } from '../math/linalg.js';
 import { num } from '../util.js';

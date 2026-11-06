@@ -1,5 +1,5 @@
 // Ponto de entrada: estado inicial, componentes, troca de níveis, persistência e compartilhamento.
-import { initStore, getState, update, subscribe, actions, historyState, rememberChain, dumpHistories, restoreHistories } from './store.js';
+import { initStore, getState, update, subscribe, actions, historyState, dumpHistories, restoreHistories } from './store.js';
 import { LEVELS } from './levels/index.js';
 import { forLevel } from './challenges/definitions.js';
 import { deepClone, escapeHtml } from './util.js';
@@ -43,22 +43,7 @@ for (const k of [1, 2, 3]) {
   }
 }
 
-// Link compartilhado (#m=base64) abre direto no Sandbox, sem perder o que estava lá.
-let level = [1, 2, 3].includes(saved.level) ? saved.level : 1;
-let replacedByLink = null;
-if (isShareHash(location.hash)) {
-  try {
-    const shared = decodeShare(location.hash);
-    replacedByLink = chains[3] || LEVELS[3].chain();
-    chains[3] = shared;
-    level = 3;
-    // O link já cumpriu seu papel: se ficasse na URL, recarregar a página descartaria as edições feitas depois.
-    history.replaceState(null, '', location.pathname + location.search);
-  } catch {
-    /* link inválido: segue com o que estava salvo */
-  }
-}
-
+const level = [1, 2, 3].includes(saved.level) ? saved.level : 1;
 const chainFor = (n) => deepClone(chains[n] || LEVELS[n].chain());
 
 function firstOpen(lvl, completed) {
@@ -92,7 +77,6 @@ for (const k of [1, 2, 3]) {
   });
 }
 restoreHistories(savedUndo);
-if (replacedByLink) rememberChain(3, replacedByLink);
 
 // ── balões
 const coach = new Coach({ onSeenChange: () => updateNotebookCount() });
@@ -208,11 +192,6 @@ window.addEventListener('pagehide', () => {
   saveNow();
 });
 
-if (replacedByLink) {
-  saveNow(); // a URL já não tem o link: o modelo aberto precisa estar salvo
-  undoToast('Modelo compartilhado aberto', { sub: 'Ele está no Sandbox. Seu modelo anterior não foi perdido.', label: 'Voltar ao meu modelo' });
-}
-
 // ── arquivo: exportar, importar, compartilhar
 const menu = $('file-menu');
 document.addEventListener('click', (e) => {
@@ -276,6 +255,27 @@ $('btn-share').addEventListener('click', async () => {
   }
 });
 
+// ── link compartilhado: ao abrir a página ou ao colar outro link na mesma aba
+function openFromHash() {
+  const { hash } = location;
+  if (!isShareHash(hash)) return;
+  // O link já cumpriu seu papel: se ficasse na URL, recarregar a página descartaria as edições feitas depois.
+  history.replaceState(null, '', location.pathname + location.search);
+  let chain;
+  try {
+    chain = decodeShare(hash);
+  } catch {
+    toast('Não foi possível abrir o link', { type: 'warn', sub: 'Ele pode ter sido cortado ao ser copiado: peça o link de novo. Seu modelo continua aqui.', timeout: 9000 });
+    return;
+  }
+  if (getState().meta.level !== 3) switchLevel(3);
+  actions.loadChain(chain);
+  saveNow(); // a URL já não tem o link: o modelo aberto precisa estar salvo
+  undoToast('Modelo compartilhado aberto', { sub: 'Ele está no Sandbox. Seu modelo anterior não foi perdido.', label: 'Voltar ao meu modelo' });
+}
+window.addEventListener('hashchange', openFromHash);
+openFromHash();
+
 // ── atalhos
 document.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
@@ -295,3 +295,5 @@ document.addEventListener('keydown', (e) => {
     switchLevel(+e.code.slice(-1));
   }
 });
+
+document.documentElement.dataset.ready = '1';

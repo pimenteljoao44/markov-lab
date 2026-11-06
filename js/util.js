@@ -87,4 +87,17 @@ export function renderTex(root) {
   });
 }
 
+const focusables = (root) =>
+  [...root.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter((el) => !el.disabled && !el.closest('[hidden]'));
+
+/** Refaz o conteúdo de `root` sem jogar o foco do teclado para o início da página. */
+export function keepFocus(root, rebuild) {
+  const active = document.activeElement;
+  const index = root.contains(active) ? focusables(root).indexOf(active) : -1;
+  rebuild();
+  if (index < 0) return;
+  const all = focusables(root);
+  (all[index] ?? all[all.length - 1])?.focus({ preventScroll: true });
+}
+
 export const deepClone = (o) => JSON.parse(JSON.stringify(o));

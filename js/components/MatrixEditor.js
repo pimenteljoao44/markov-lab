@@ -1,7 +1,7 @@
 // Editor da matriz P (níveis 2–3) e regras em linguagem natural (nível 1).
 // Hover bidirecional com o grafo e aviso visual não-bloqueante para linhas que não somam 1.
 import { subscribe, actions, update, getState } from '../store.js';
-import { escapeHtml, fmtP, parseProb, renderTex, clamp, texNum, normalizeRow, MAX_STATES } from '../util.js';
+import { escapeHtml, fmtP, parseProb, renderTex, clamp, texNum, normalizeRow, keepFocus, MAX_STATES } from '../util.js';
 import { vocab } from '../vocab.js';
 import { LEVELS } from '../levels/index.js';
 import { helpDot } from '../coach/api.js';
@@ -30,14 +30,17 @@ export class MatrixEditor {
     const feat = LEVELS[s.meta.level].features;
     const n = s.chain.states.length;
     const v = vocab(s.chain);
-    const key = [s.meta.level, n, s.ui.matrixMode, v.unit, v.step, ...s.chain.states.map((x) => x.id + x.label + x.color)].join('|');
+    // Na matriz, trocar um nome só muda textos: refazer a tabela apagaria o campo para onde o foco acabou de ir.
+    const labels = feat.matrix ? [] : s.chain.states.map((x) => x.label);
+    const key = [s.meta.level, n, s.ui.matrixMode, v.unit, v.step, ...s.chain.states.map((x) => x.id + x.color), ...labels].join('|');
     if (key !== this.structKey) {
       this.structKey = key;
-      if (feat.matrix) this.build(s, feat);
-      else this.buildRules(s);
+      keepFocus(this.el, () => (feat.matrix ? this.build(s, feat) : this.buildRules(s)));
     }
-    if (feat.matrix) this.refresh(s);
-    else this.refreshRules(s);
+    if (feat.matrix) {
+      this.syncLabels(s);
+      this.refresh(s);
+    } else this.refreshRules(s);
   }
 
   // ───────────── Nível 1: duas regras em português ─────────────
@@ -107,7 +110,7 @@ export class MatrixEditor {
       const dot = `<i class="dot" style="background:${st.color}"></i>`;
       if (feat.editStates && axis === 'row')
         return `${dot}<input class="head-in" data-rename="${i}" value="${escapeHtml(st.label)}" maxlength="24" aria-label="Nome do estado">`;
-      return `${dot}<span title="${escapeHtml(st.label)}">${escapeHtml(st.label)}</span>`;
+      return `${dot}<span data-label="${i}" title="${escapeHtml(st.label)}">${escapeHtml(st.label)}</span>`;
     };
     const unit = escapeHtml(vocab(s.chain).unit);
     this.el.innerHTML = `
@@ -154,6 +157,21 @@ export class MatrixEditor {
       <div class="matrix-foot" hidden></div>`;
     renderTex(this.el);
     this.prevStatus = [];
+  }
+
+  /** Atualiza os nomes dos estados sem refazer a tabela. */
+  syncLabels(s) {
+    const S = s.chain.states;
+    this.el.querySelectorAll('[data-rename]').forEach((inp) => {
+      if (document.activeElement !== inp) inp.value = S[+inp.dataset.rename].label;
+    });
+    this.el.querySelectorAll('[data-label]').forEach((span) => {
+      span.textContent = S[+span.dataset.label].label;
+      span.title = span.textContent;
+    });
+    this.el.querySelectorAll('td.cell').forEach((td) => {
+      td.querySelector('.cell-in').setAttribute('aria-label', `P(${S[+td.dataset.i].label} → ${S[+td.dataset.j].label})`);
+    });
   }
 
   refresh(s) {

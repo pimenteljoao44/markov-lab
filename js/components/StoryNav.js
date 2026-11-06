@@ -3,6 +3,7 @@ import { subscribe, getState } from '../store.js';
 import { LEVELS } from '../levels/index.js';
 import { forLevel } from '../challenges/definitions.js';
 import { htmlVocab } from '../vocab.js';
+import { keepFocus } from '../util.js';
 
 export class StoryNav {
   constructor(navEl, lessonEl, xpEl, { onSelect }) {
@@ -28,7 +29,7 @@ export class StoryNav {
 
   renderTabs(s) {
     const done = s.challenges.completed;
-    this.nav.innerHTML = [1, 2, 3]
+    const tabs = [1, 2, 3]
       .map((n) => {
         const L = LEVELS[n];
         const list = forLevel(n);
@@ -40,6 +41,9 @@ export class StoryNav {
         </button>`;
       })
       .join('');
+    keepFocus(this.nav, () => {
+      this.nav.innerHTML = tabs;
+    });
     const total = [1, 2, 3].reduce((a, n) => a + forLevel(n).length, 0);
     this.xp.innerHTML = `<b>${done.length}</b> de ${total} desafios`;
   }
@@ -48,9 +52,11 @@ export class StoryNav {
     const L = LEVELS[s.meta.level];
     const col = !!this.collapsed[s.meta.level];
     this.lesson.classList.toggle('collapsed', col);
-    this.lesson.innerHTML = `
+    keepFocus(this.lesson, () => {
+      this.lesson.innerHTML = `
       <h2>${L.heading}</h2>
       ${col ? '' : `<p>${L.story(htmlVocab(s.chain))}</p>`}
       <button type="button" class="lesson-toggle" aria-expanded="${!col}">${col ? 'mostrar' : 'esconder'}</button>`;
+    });
   }
 }

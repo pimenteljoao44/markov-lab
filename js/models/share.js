@@ -5,13 +5,19 @@ const PREFIX = '#m=';
 
 export const isShareHash = (hash) => hash.startsWith(PREFIX);
 
+/** Base64 próprio para URL: aplicativos de mensagem costumam alterar +, / e = em links. */
 export function encodeShare(data) {
   const bytes = new TextEncoder().encode(JSON.stringify(data));
-  return `${PREFIX}${btoa(String.fromCharCode(...bytes))}`;
+  const text = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${PREFIX}${text}`;
 }
 
-/** Lança erro se o link estiver corrompido ou se o modelo for inválido. */
+/**
+ * Lança erro se o link estiver corrompido ou se o modelo for inválido.
+ * Aceita também links antigos, em base64 comum, e os que algum aplicativo codificou (%3D).
+ */
 export function decodeShare(hash) {
-  const bytes = Uint8Array.from(atob(hash.slice(PREFIX.length)), (c) => c.charCodeAt(0));
+  const text = decodeURIComponent(hash.slice(PREFIX.length)).replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+  const bytes = Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
   return sanitizeChain(JSON.parse(new TextDecoder().decode(bytes)));
 }

@@ -65,9 +65,6 @@ function travel(direction) {
 
 export const historyState = () => ({ canUndo: currentHistory().canUndo, canRedo: currentHistory().canRedo });
 
-/** Registra um modelo substituído fora das ações, como ao abrir um link compartilhado. */
-export const rememberChain = (level, chain) => histories[level].record(chain);
-
 export const dumpHistories = () => ({ 1: histories[1].past, 2: histories[2].past, 3: histories[3].past });
 
 export function restoreHistories(saved) {
@@ -131,7 +128,7 @@ export const actions = {
     }, 'chain', 'structure');
   },
   moveState(i, x, y) {
-    commit(null, (st) => Object.assign(st.chain.states[i], { x, y }), 'layout');
+    commit(`move:${i}`, (st) => Object.assign(st.chain.states[i], { x, y }), 'layout');
   },
   setHover(h) {
     if (sameHover(state.ui.hover, h)) return;

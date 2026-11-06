@@ -1,6 +1,6 @@
 // Dock de micro-desafios: progresso ao vivo ("quente/frio"), dicas graduais, quiz e celebração.
 import { subscribe, update, getState } from '../store.js';
-import { escapeHtml } from '../util.js';
+import { escapeHtml, keepFocus } from '../util.js';
 import { forLevel, activeChallenge, byId, context, say } from '../challenges/definitions.js';
 import { toast, burst } from './Toast.js';
 
@@ -39,9 +39,10 @@ export class ChallengeDock {
       quiz = `<div class="quiz-opts">${q.options.map((o, k) => `<button data-quiz="${k}">${escapeHtml(o.label)}</button>`).join('')}</div>`;
     }
 
-    this.el.innerHTML = `
+    keepFocus(this.el, () => {
+      this.el.innerHTML = `
       <div class="dock-inner rise">
-        <div class="ch-num ${done ? 'done' : ''}" style="--c:var(--lv${s.meta.level})" aria-hidden="true">${done ? '✓' : idx + 1}</div>
+        <div class="ch-num ${done ? 'done' : ''}" style="--c:var(--lv${s.meta.level});--c-ink:var(--lv${s.meta.level}-ink)" aria-hidden="true">${done ? '✓' : idx + 1}</div>
         <div class="ch-body">
           <div class="ch-title"><h3>${escapeHtml(c.title)}</h3><span class="ch-tag">desafio ${idx + 1} de ${list.length}${done ? ' · concluído' : ''}</span></div>
           <p class="ch-desc">${escapeHtml(say(done ? c.success : c.desc, ctx))}</p>
@@ -63,6 +64,7 @@ export class ChallengeDock {
           <button class="btn btn-sm ${done ? 'btn-primary' : 'btn-quiet'}" data-nav="1" ${idx >= list.length - 1 ? 'disabled' : ''}>${done ? 'Próximo desafio' : 'Pular'}</button>
         </div>
       </div>`;
+    });
     this.evaluate(s);
   }
 

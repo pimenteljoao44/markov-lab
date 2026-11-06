@@ -9,20 +9,16 @@
   <meta property="og:description" content="Modele qualquer problema com cadeias de Markov, com balões que explicam a teoria enquanto você usa.">
   <meta property="og:type" content="website">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;700&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <link rel="stylesheet" href="vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <script defer src="vendor/katex/katex.min.js"></script>
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/layout.css">
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/coach.css">
   <link rel="stylesheet" href="css/studio.css">
   <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
   <div class="app">
@@ -72,7 +68,7 @@
             <span><svg width="24" height="10" aria-hidden="true"><path d="M1 2h22" stroke="currentColor" stroke-width="1.5"/><path d="M1 7h22" stroke="currentColor" stroke-width="4"/></svg>seta grossa = mais provável</span>
             <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="#fff" stroke="currentColor" stroke-width="1.5"/><path d="M1.6 9h10.8A6 6 0 0 1 1.6 9z" fill="currentColor" opacity=".45"/></svg>nível = fração <button type="button" class="q" data-tip="jar" aria-label="Explicar o nível do pote">?</button></span>
             <span><svg width="20" height="10" aria-hidden="true"><path d="M1 5h18" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/></svg>tracejado = equilíbrio <button type="button" class="q" data-tip="pi" aria-label="Explicar o equilíbrio">?</button></span>
-            <span class="key-hint">clique num pote ou numa seta para entender</span>
+            <span class="key-hint">clique num pote ou numa seta para entender · no teclado: Tab, setas e Enter</span>
           </div>
         </div>
         <div class="simbar" id="simbar"></div>
@@ -90,6 +86,21 @@
   </div>
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <noscript><p style="padding:24px">O Laboratório de Markov precisa de JavaScript para funcionar.</p></noscript>
-  <script type="module" src="js/main.js"></script>
+  <script>
+    // Se os módulos não carregarem, sobraria só a moldura com botões que não respondem: melhor dizer o que houve.
+    function bootFailed() {
+      if (document.documentElement.dataset.ready || document.getElementById('boot-error')) return;
+      var box = document.createElement('div');
+      box.id = 'boot-error';
+      box.className = 'boot-error';
+      box.setAttribute('role', 'alert');
+      box.innerHTML = location.protocol === 'file:'
+        ? '<b>Este app precisa de um servidor local.</b> Abrir o arquivo com dois cliques não funciona. Veja “Como rodar” no README.'
+        : '<b>Não foi possível carregar o Laboratório.</b> Recarregue a página com Ctrl+Shift+R. Se o problema continuar, confira sua conexão.';
+      document.body.appendChild(box);
+    }
+    window.addEventListener('error', bootFailed);
+  </script>
+  <script type="module" src="js/main.js" onerror="bootFailed()"></script>
 </body>
 </html>

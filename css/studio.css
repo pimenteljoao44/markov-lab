@@ -25,6 +25,7 @@ dialog.editor { width: min(520px, calc(100vw - 24px)); }
   width: 100%; min-height: 34px; padding: 5px 9px; background: #fff;
   border: 1.5px solid var(--line); border-radius: 8px; font-size: 14px;
 }
+.field::placeholder { color: var(--ink-3); opacity: 1; }
 .field:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 2px rgba(47, 107, 255, .2); }
 .field.area { display: block; resize: vertical; line-height: 1.45; }
 .field.mono { font-family: var(--mono); font-size: 13px; }
@@ -53,7 +54,7 @@ dialog.editor { width: min(520px, calc(100vw - 24px)); }
 .gal-card small { font-size: 11.5px; color: var(--ink-3); }
 
 /* Assistente */
-.wz-tabs { display: flex; gap: 4px; padding: 4px 18px 0; border-bottom: 1.5px solid var(--line); }
+.wz-tabs { flex: none; display: flex; gap: 4px; padding: 4px 18px 0; border-bottom: 1.5px solid var(--line); }
 .wz-tab {
   border: 1.5px solid transparent; border-bottom: 0; background: transparent; cursor: pointer;
   padding: 7px 12px; border-radius: 8px 8px 0 0; font-size: 13.5px; font-weight: 700; color: var(--ink-2);
@@ -65,7 +66,7 @@ dialog.editor { width: min(520px, calc(100vw - 24px)); }
 .wz-steps li { display: flex; align-items: center; gap: 6px; }
 .wz-steps li + li::before { content: '→'; color: var(--line); }
 .wz-steps li.on { color: var(--ink); font-weight: 700; }
-.wz-steps li.done { color: var(--ok); }
+.wz-steps li.done { color: var(--ok-ink); }
 .wz-lead { display: block; margin: 0 0 10px; font-size: 15px; font-weight: 700; }
 .wz-tip { margin: 10px 0 0; padding: 7px 10px; background: var(--marker-soft); border-radius: 8px; font-size: 13px; color: var(--ink-2); }
 .wz-tip b { color: var(--ink); }
@@ -102,7 +103,7 @@ dialog.editor { width: min(520px, calc(100vw - 24px)); }
 .wz-table th { font-weight: 700; background: #f6f8fc; }
 .wz-table td { font-family: var(--mono); }
 .wz-table td.zero { color: var(--ink-3); }
-.wz-error { margin-right: auto; font-size: 13px; color: var(--pen); }
+.wz-error { margin-right: auto; font-size: 13px; color: var(--pen-ink); }
 
 /* Caderno de teoria */
 dialog.notebook {
@@ -122,7 +123,7 @@ dialog.notebook[open] { display: flex; flex-direction: column; }
 .nb-list details { border-bottom: 1px solid var(--line-soft); }
 .nb-list summary { display: flex; align-items: center; gap: 8px; padding: 7px 0; cursor: pointer; font-weight: 700; font-size: 14px; list-style: none; }
 .nb-list summary::-webkit-details-marker { display: none; }
-.nb-check { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; border: 1.5px solid var(--line); border-radius: 4px; font-size: 11px; color: var(--ok); }
+.nb-check { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; border: 1.5px solid var(--line); border-radius: 4px; font-size: 11px; color: var(--ok-ink); }
 .nb-body { padding: 0 0 10px 24px; font-size: 13.5px; color: var(--ink-2); }
 .nb-body p { margin: 4px 0 6px; }
 .nb-body b { color: var(--ink); }

@@ -9,21 +9,26 @@
 
   --ink: #1f2a44;         /* tinta */
   --ink-2: #4c5873;
-  --ink-3: #848fa5;
+  --ink-3: #5c6880;       /* o mais claro que ainda dá 4,5:1 sobre a mesa azulada */
   --line: #c9d4e3;
   --line-soft: #e4eaf2;
 
   --marker: #ffe45c;      /* marca-texto */
   --marker-soft: #fff6c4;
   --pen: #e5383b;         /* caneta vermelha */
+  --pen-ink: #bd1f22;     /* a mesma caneta, escura o bastante para texto */
   --pen-soft: #fde8e8;
   --ok: #12a150;
+  --ok-ink: #0a6b35;
   --ok-soft: #e3f6ec;
   --blue: #2f6bff;
 
   --lv1: #f29e1f;
   --lv2: #7a5af8;
   --lv3: #13a87b;
+  --lv1-ink: #915f13;     /* as cores de nível servem para faixas; número usa estas */
+  --lv2-ink: #5b3ed6;
+  --lv3-ink: #0b654a;
 
   --display: 'Alfa Slab One', 'Rockwell', 'Roboto Slab', Georgia, serif;
   --body: 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', system-ui, sans-serif;

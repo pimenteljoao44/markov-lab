@@ -4,7 +4,7 @@ Um caderno interativo para **modelar qualquer problema** com cadeias de Markov: 
 
 ![Laboratório de Markov com um funil de vendas: potes enchendo, bolinhas nas setas e um balão explicando o nível do pote](docs/screenshot.jpg)
 
-Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do que você digita ou cola sai do seu computador.
+Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do que você digita ou cola sai do seu computador, e a página não pede nada a outros sites.
 
 ## O que dá para fazer
 
@@ -59,6 +59,18 @@ Não há etapa de build. No repositório, vá em **Settings → Pages**, escolha
 }
 ```
 
+## Atalhos de teclado
+
+| Tecla | O que faz |
+|---|---|
+| `Ctrl+Z`, `Ctrl+Y` | Desfaz e refaz a última mudança no modelo |
+| `Espaço` | Roda ou pausa a simulação |
+| `1`, `2`, `3` | Troca de nível |
+| `Tab` | Passa pelos potes do diagrama e pelos demais controles |
+| `Enter` | Abre a explicação do pote ou da seta em foco |
+| `←` `→` `↑` `↓` | A partir de um pote, percorre as setas que saem dele; `Esc` volta ao pote |
+| `Shift` + setas | Move o pote em foco |
+
 ## Limites
 
 - Até 10 estados por modelo. Em dados com mais do que isso, os estados mais raros são reunidos em "Outros".
@@ -75,12 +87,20 @@ Não há etapa de build. No repositório, vá em **Settings → Pages**, escolha
 | `js/components/` | Diagrama (SVG e D3), bolinhas (Canvas), matriz, assistente, painéis e desafios |
 | `js/levels/`, `js/challenges/` | Conteúdo dos três níveis e dos desafios |
 | `js/store.js`, `js/vocab.js` | Estado único da aplicação e vocabulário do modelo aberto |
-
-Bibliotecas, carregadas por CDN: [D3](https://d3js.org) para o diagrama e os gráficos e [KaTeX](https://katex.org) para as fórmulas.
+| `css/` | Estilos; `mobile.css` reúne o que muda em celular e telas de toque |
+| `vendor/` | Bibliotecas e fontes incluídas no projeto: [D3](https://d3js.org) para o diagrama e os gráficos, [KaTeX](https://katex.org) para as fórmulas e a família Atkinson Hyperlegible. Versões e licenças em [`vendor/README.md`](vendor/README.md) |
 
 ## Testes
 
-Com o servidor rodando, abra as duas páginas. O título da aba mostra `OK` ou `FALHOU`:
+Para rodar tudo de uma vez, sem abrir janela (precisa de Python e de Chrome, Edge ou Chromium):
+
+```bash
+python tests/run.py
+```
+
+A cada `push` ou pull request no GitHub, o mesmo comando roda em `.github/workflows/tests.yml`.
+
+Para ver os testes no navegador, abra as duas páginas com o servidor rodando. O título da aba mostra `OK` ou `FALHOU`:
 
 - http://localhost:5173/tests/math.test.html testa o motor matemático, a leitura de dados, a validação de arquivos, o desfazer, o link compartilhado, o quiz e todos os modelos da galeria.
-- http://localhost:5173/tests/app.test.html abre o app numa janela e percorre os fluxos da interface: copiar e abrir links, desfazer, rascunho do assistente, importação de CSV e os textos do Diagnóstico. Leva menos de um minuto. Os dados salvos no navegador são guardados antes e recolocados no fim; deixe a aba em primeiro plano até terminar.
+- http://localhost:5173/tests/app.test.html abre o app numa janela e percorre os fluxos da interface: links, desfazer, rascunho do assistente, importação de CSV, teclado, contraste, celular e falhas ao carregar. Leva menos de um minuto. Os dados salvos no navegador são guardados antes e recolocados no fim; deixe a aba em primeiro plano até terminar.

@@ -217,6 +217,7 @@ export class Coach {
     this.current = null;
     this.el.hidden = true;
     this.spot(null);
+    document.body.classList.remove('sheet-open');
     cancelAnimationFrame(this.raf);
   }
 
@@ -321,6 +322,7 @@ export class Coach {
     if (window.matchMedia('(max-width: 720px)').matches) {
       el.style.left = el.style.top = '';
       el.dataset.place = 'sheet';
+      this.revealAboveSheet();
       return;
     }
     const a = this.resolve(getState());
@@ -366,6 +368,21 @@ export class Coach {
       tail.style.left = `${Math.min(Math.max(16, cx - x), bw - 16)}px`;
       tail.style.top = '';
     }
+  }
+
+  /** No celular o balão cobre a parte de baixo da tela: rola a página para o alvo ficar acima dele. */
+  revealAboveSheet() {
+    if (this.current.revealed) return; // uma vez só: depois a rolagem é de quem está lendo
+    this.current.revealed = true;
+    const a = this.resolve(getState());
+    if (!a) return;
+    document.body.classList.add('sheet-open');
+    const r = (a.closest?.('g.node') ?? a).getBoundingClientRect();
+    const sheetTop = this.el.getBoundingClientRect().top;
+    let dy = Math.max(0, r.bottom - (sheetTop - GAP));
+    if (r.top - dy < EDGE) dy = r.top - EDGE; // alvo maior que o espaço livre: mostra o começo dele
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (Math.abs(dy) > 1) window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
   }
 
   // ── Botões "?" ───────────────────────────────────────

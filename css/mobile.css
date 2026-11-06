@@ -1,0 +1,57 @@
+/* Celular e telas de toque. Fica por último para valer sobre os estilos de cada componente. */
+
+/* Alvos de toque de pelo menos 24 px. */
+@media (max-width: 720px), (pointer: coarse) {
+  .q { width: 24px; height: 24px; font-size: 13px; }
+  .q::after { inset: -2px; }
+  .text-btn, .text-btn.inline, .lesson-toggle, .b-x, .b-skip, .dlg-x, .fix, .seg button, .del-state { min-width: 24px; min-height: 24px; }
+  .text-btn.inline { padding: 2px 4px; }
+  .switch { min-height: 24px; }
+  .head-in { min-height: 24px; }
+  details > summary { min-height: 24px; }
+  .wz-check input { width: 24px; height: 24px; margin: 0; }
+
+  /* Bolinhas dos desafios: o desenho continua pequeno, a área de toque cresce. */
+  .ch-dots { gap: 2px; }
+  .ch-dot, .ch-dot.done, .ch-dot.active { display: grid; place-items: center; width: 24px; height: 24px; border: 0; background: transparent; box-shadow: none; }
+  .ch-dot::before { content: ''; width: 12px; height: 12px; border: 1.5px solid var(--ink-3); border-radius: 50%; }
+  .ch-dot.done::before { background: var(--ok); border-color: var(--ok); }
+  .ch-dot.active::before { border-color: var(--ink); box-shadow: 0 0 0 2px var(--marker); }
+
+  /* Sem mouse não existe "passar por cima": o botão de remover estado fica sempre visível. */
+  .del-state { opacity: .75; }
+
+  /* A faixa desenhada continua fina; a área que responde ao dedo tem 24 px. */
+  input[type=range] { height: 24px; background: transparent; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: var(--line); }
+  input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; margin-top: -8px; }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: var(--line); }
+  input[type=range]::-moz-range-thumb { width: 17px; height: 17px; }
+}
+
+@media (max-width: 720px) {
+  /* As abas dividem a largura: em telas de 320 px, elas passariam da borda. */
+  .tabs { gap: 2px; }
+  .tab { flex: 1 1 0; min-width: 0; justify-content: center; gap: 5px; padding: 7px 6px 8px; }
+  .tab.active { padding-bottom: 11px; }
+
+  /* Nome ou palavra comprida nunca alarga a folha para além da tela. */
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .ctl { flex-wrap: wrap; max-width: 100%; }
+  .ctl select { flex: 1 1 140px; min-width: 0; max-width: 100%; }
+
+  /* Os botões principais da simulação ficam sempre à mão, acompanhando a rolagem. */
+  .sim-main {
+    position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 30;
+    flex-wrap: wrap; justify-content: center; gap: 4px;
+    padding: 6px 8px; background: var(--card);
+    border: 1.5px solid var(--ink); border-radius: 14px; box-shadow: 0 3px 0 rgba(31, 42, 68, .2);
+  }
+  .sim-main .q { display: none; } /* a mesma explicação está no Caderno de teoria */
+  .dock { padding-bottom: 76px; }
+  .toasts { left: 10px; right: 10px; bottom: 76px; }
+  .toast { max-width: none; }
+
+  /* Com o balão aberto, a página ganha espaço para o alvo subir e ficar acima dele. */
+  body.sheet-open { padding-bottom: 60vh; }
+}

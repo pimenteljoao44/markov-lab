@@ -47,19 +47,36 @@ const ready = () => until(() => $('#model-title')?.textContent, 'o app abrir', 1
 const twoStates = (a, b) => ({ meta: { title: `${a} e ${b}`, unit: 'cliente', step: 'mês' }, states: [{ id: 'a', label: a }, { id: 'b', label: b }], matrix: [[0.5, 0.5], [0.5, 0.5]] });
 const threeStates = (matrix) => ({ meta: { title: 'Três', unit: 'cliente', step: 'mês' }, states: ['A', 'B', 'C'].map((label, i) => ({ id: `s${i}`, label })), matrix });
 
-/** Abre o app do zero, com os dados salvos pedidos e sem balões. */
-async function boot({ hash = '', storage = { level: 3 } } = {}) {
+/** Abre o app do zero, com os dados salvos pedidos e, a não ser que se peça, sem balões. */
+async function boot({ hash = '', storage = { level: 3 }, width = 1280, height = 800, coach = false } = {}) {
+  await prepare(storage, coach);
+  await mount({ src: `${BASE}index.html${hash}` }, width, height);
+  await ready();
+}
+
+/** Abre uma versão alterada da página, para simular falhas. */
+async function bootHtml(html) {
+  await prepare(null, false);
+  await mount({ srcdoc: html.replace('<head>', `<head><base href="${BASE}">`) }, 1280, 800);
+}
+
+async function prepare(storage, coach) {
   frame?.remove();
   await sleep(0);
   localStorage.removeItem(KEY);
-  localStorage.setItem(COACH, JSON.stringify({ enabled: false, seen: [] }));
+  if (coach) localStorage.removeItem(COACH);
+  else localStorage.setItem(COACH, JSON.stringify({ enabled: false, seen: [] }));
   if (storage) localStorage.setItem(KEY, JSON.stringify(storage));
+}
+
+async function mount(attrs, width, height) {
   frame = document.createElement('iframe');
-  frame.src = `${BASE}index.html${hash}`;
+  Object.assign(frame, attrs);
+  frame.style.width = `${width}px`;
+  frame.style.height = `${height}px`;
   const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
   document.getElementById('stage').appendChild(frame);
   await loaded;
-  await ready();
 }
 
 /** Recarrega como F5, sem esperar o salvamento automático. */
@@ -103,6 +120,90 @@ function mouseClick(from, to = from) {
   while (!target.contains(to)) target = target.parentElement;
   target.dispatchEvent(new M('click', { bubbles: true, view: win() }));
 }
+function keyOn(el, key, opts = {}) {
+  el.dispatchEvent(new (win().KeyboardEvent)('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+}
+const settle = () => sleep(650); // transições e animações de entrada
+
+const visible = (el) => {
+  const r = el.getBoundingClientRect();
+  const cs = win().getComputedStyle(el);
+  return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
+};
+
+/** Controles menores que 24 px. Campo dentro de um rótulo conta pelo tamanho do rótulo, que também responde ao toque. */
+function smallTargets(root = doc().body) {
+  return [...root.querySelectorAll('button, summary, a[href], select, input:not([type=hidden]), textarea')]
+    .filter((el) => visible(el) && !el.closest('dialog:not([open])') && !el.closest('[hidden]'))
+    .filter((el) => {
+      const r = (el.closest('label') ?? el).getBoundingClientRect();
+      return r.width < 23.5 || r.height < 23.5;
+    })
+    .map((el) => {
+      const r = el.getBoundingClientRect();
+      return `${el.tagName}.${String(el.className).split(' ')[0]} ${Math.round(r.width)}x${Math.round(r.height)}`;
+    });
+}
+
+function luminance(rgb) {
+  const [r, g, b] = rgb.map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const parseColor = (text) => {
+  const m = text.match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const p = m[1].split(/[\s,/]+/).map(Number);
+  return { rgb: p.slice(0, 3), a: p[3] ?? 1 };
+};
+
+/** Lista os textos visíveis abaixo de 4,5:1 (3:1 para letra grande), como pede a WCAG AA. */
+function contrastFailures(root = doc().body) {
+  const out = [];
+  const cssOf = (el) => win().getComputedStyle(el);
+  const background = (el) => {
+    for (let n = el; n; n = n.parentElement) {
+      const c = parseColor(cssOf(n).backgroundColor);
+      if (c && c.a >= 0.99) return c.rgb;
+    }
+    return [255, 255, 255];
+  };
+  const opacity = (el) => {
+    let total = 1;
+    for (let n = el; n; n = n.parentElement) total *= +cssOf(n).opacity;
+    return total;
+  };
+  const check = (el, sample) => {
+    if (!visible(el) || el.disabled || el.closest('[disabled], .katex-mathml, dialog:not([open]), [hidden]')) return;
+    const svg = el.closest('svg');
+    const cs = cssOf(el);
+    const color = parseColor(svg ? cs.fill : cs.color);
+    if (!color) return;
+    const alpha = color.a * opacity(el);
+    if (alpha < 0.02) return; // invisível de propósito, como o × antes de passar o mouse
+    // Texto de SVG costuma ficar sobre um retângulo logo antes dele, como as etiquetas e o selo "absorvente".
+    const plate = svg && el.previousElementSibling?.tagName === 'rect' ? parseColor(cssOf(el.previousElementSibling).fill) : null;
+    const bg = plate ? plate.rgb : background(svg ?? el);
+    const mixed = color.rgb.map((v, i) => v * alpha + bg[i] * (1 - alpha));
+    const [hi, lo] = [luminance(mixed), luminance(bg)].sort((a, b) => b - a);
+    const ratio = (hi + 0.05) / (lo + 0.05);
+    const size = parseFloat(cs.fontSize);
+    const large = size >= 24 || (size >= 18.66 && +cs.fontWeight >= 700);
+    if (ratio < (large ? 3 : 4.5)) out.push(`${String(el.className.baseVal ?? el.className).split(' ')[0] || el.tagName} ${size}px ${ratio.toFixed(2)}:1 "${sample.slice(0, 20)}"`);
+  };
+  const walker = doc().createTreeWalker(root, win().NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const text = walker.currentNode.textContent.trim();
+    if (text && walker.currentNode.parentElement && !walker.currentNode.parentElement.closest('script, style, noscript, option')) check(walker.currentNode.parentElement, text);
+  }
+  root.querySelectorAll('input:not([type=range]):not([type=checkbox]):not([type=file]), select, textarea').forEach((el) => {
+    if (el.value) check(el, el.value);
+  });
+  return out;
+}
+
 const toastAction = () => until(() => $('.toast-action'), 'botão de desfazer no aviso');
 const wizardDialog = () => $('dialog.wizard');
 const wizardPage = () => wizardDialog().querySelector('.wz-steps .on')?.textContent;
@@ -439,10 +540,239 @@ const TESTS = [
     buttons().find((b) => b.textContent === '40,0%').click();
     assert(/concluído/.test($('.ch-tag').textContent), 'a resposta certa conclui');
   }],
+
+  // ── 8. Sem depender de outros sites
+  ['o app não pede nada a outros sites', async () => {
+    await boot();
+    await until(() => $('.katex'), 'as fórmulas aparecerem');
+    await doc().fonts.ready;
+    const external = win().performance.getEntriesByType('resource').map((r) => r.name).filter((u) => new URL(u).origin !== win().location.origin);
+    same(external.length, 0, `pedidos externos (${external.join(', ')})`);
+    assert($$('g.node').length > 0, 'o diagrama precisa aparecer');
+    for (const family of ['Alfa Slab One', 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible Mono', 'KaTeX_Main']) {
+      assert([...doc().fonts].some((f) => f.family.includes(family) && f.status === 'loaded'), `fonte ${family}`);
+    }
+    same(doc().documentElement.dataset.ready, '1', 'marca de pronto');
+    assert(!$('#boot-error'), 'sem mensagem de erro');
+  }],
+  ['módulo que não carrega mostra uma mensagem', async () => {
+    const html = await (await fetch(`${BASE}index.html`)).text();
+    await bootHtml(html.replace('src="js/main.js"', 'src="js/nao-existe.js"'));
+    const box = await until(() => $('#boot-error'), 'a mensagem');
+    assert(/Não foi possível carregar/.test(box.textContent), box.textContent);
+    same(box.getAttribute('role'), 'alert', 'papel');
+  }],
+  ['erro ao iniciar mostra a mesma mensagem', async () => {
+    const html = await (await fetch(`${BASE}index.html`)).text();
+    const broken = encodeURIComponent('throw new Error("falha simulada ao iniciar");');
+    await bootHtml(html.replace('src="js/main.js"', `src="data:text/javascript,${broken}"`));
+    await until(() => $('#boot-error'), 'a mensagem');
+  }],
+
+  // ── 9. Links
+  ['link inválido avisa e mantém o modelo', async () => {
+    await boot({ hash: '#m=%%%quebrado', storage: { level: 3, chains: { 3: twoStates('Meu A', 'Meu B') } } });
+    const t = await until(() => $('.toast.warn'), 'o aviso');
+    assert(/Não foi possível abrir o link/.test(t.textContent), t.textContent);
+    same(labels()[0], 'Meu A', 'modelo');
+    same(win().location.hash, '', 'hash');
+    assert(!$('.toast-action'), 'sem nada para desfazer');
+    assert($('#btn-undo').disabled, 'o modelo não mudou');
+  }],
+  ['colar outro link na mesma aba abre o modelo', async () => {
+    await boot({ storage: { level: 1, chains: { 3: twoStates('Meu A', 'Meu B') } } });
+    win().location.hash = encodeShare(twoStates('Colado A', 'Colado B'));
+    await until(() => labels()[0] === 'Colado A', 'abrir o link colado');
+    same(win().location.hash, '', 'hash');
+    assert($('[data-level="3"]').classList.contains('active'), 'precisa ir para o Sandbox');
+    (await toastAction()).click();
+    same(labels()[0], 'Meu A', 'voltar ao modelo anterior');
+    win().location.hash = '#m=nao-e-um-modelo';
+    await until(() => $('.toast.warn'), 'o aviso');
+    same(labels()[0], 'Meu A', 'link inválido não muda nada');
+  }],
+
+  // ── 10. Teclado
+  ['setas do teclado percorrem as transições do pote', async () => {
+    await boot();
+    win().focus();
+    const jar = $('g.node');
+    jar.focus();
+    same(doc().activeElement, jar, 'foco no pote');
+    keyOn(jar, 'ArrowRight');
+    const a = doc().activeElement;
+    assert(a.matches('g.edge'), `foco em ${a.tagName}`);
+    assert(/^Transição de .+ para .+, chance /.test(a.getAttribute('aria-label')), a.getAttribute('aria-label'));
+    same(a.getAttribute('role'), 'button', 'papel');
+    assert($('g.edge.is-hl'), 'a seta em foco fica destacada');
+    keyOn(a, 'ArrowRight');
+    const b = doc().activeElement;
+    assert(b !== a && b.matches('g.edge'), 'vai para a próxima seta');
+    keyOn(b, 'ArrowLeft');
+    same(doc().activeElement, a, 'volta para a anterior');
+    keyOn(a, 'Enter');
+    await until(() => !$('.balloon').hidden, 'a explicação da seta');
+    keyOn(a, 'Escape');
+    same(doc().activeElement, jar, 'Esc volta ao pote');
+    keyOn(jar, 'ArrowLeft');
+    keyOn(doc().activeElement, 'Tab');
+    same(doc().activeElement, jar, 'Tab sai pelo pote');
+  }],
+  ['Shift com setas move o pote, e desfazer volta de uma vez', async () => {
+    await boot();
+    win().focus();
+    const { getState } = await app();
+    const jar = $('g.node');
+    jar.focus();
+    const x = getState().chain.states[0].x;
+    for (let k = 0; k < 3; k++) keyOn(jar, 'ArrowRight', { shiftKey: true });
+    assert(Math.abs(getState().chain.states[0].x - (x + 0.09)) < 1e-9 || getState().chain.states[0].x === 1, `x: ${getState().chain.states[0].x}`);
+    $('#btn-undo').click();
+    same(getState().chain.states[0].x, x, 'posição depois de desfazer');
+    assert($('#btn-undo').disabled, 'as três setas são um passo só');
+  }],
+  ['renomear e trocar de campo mantém o foco', async () => {
+    await boot();
+    win().focus();
+    const [first, second] = $$('.head-in');
+    first.focus();
+    first.value = 'Nome novo';
+    second.focus();
+    assert(second.isConnected, 'o campo seguinte não pode ser refeito');
+    same(doc().activeElement, second, 'foco no campo seguinte');
+    same(labels()[0], 'Nome novo', 'nome aplicado');
+    same($('.colh [data-label="0"]').textContent, 'Nome novo', 'título da coluna');
+    assert($('td.cell[data-i="0"][data-j="1"] .cell-in').getAttribute('aria-label').startsWith('P(Nome novo'), 'nome para leitor de tela');
+  }],
+  ['renomear e clicar num botão não perde o clique', async () => {
+    await boot();
+    win().focus();
+    const n = labels().length;
+    const inp = $('.head-in');
+    inp.focus();
+    inp.value = 'Nome novo';
+    const add = $('[data-act="add"]');
+    add.focus();
+    assert(add.isConnected, 'o botão não pode ser refeito durante o clique');
+    add.click();
+    same(labels().length, n + 1, 'estados');
+  }],
+  ['refazer um painel não tira o foco de quem usa teclado', async () => {
+    await boot();
+    win().focus();
+    const hint = $('[data-hint]');
+    hint.focus();
+    hint.click();
+    assert($('#challenge-dock').contains(doc().activeElement), 'foco continua no desafio');
+    const add = $('[data-act="add"]');
+    add.focus();
+    add.click();
+    same(doc().activeElement.dataset.act, 'add', 'botão Adicionar estado');
+    const tab = $('[data-level="2"]');
+    tab.focus();
+    tab.click();
+    same(doc().activeElement.dataset.level, '2', 'aba do nível');
+  }],
+
+  // ── 11. Contraste
+  ['textos têm contraste suficiente nas telas principais', async () => {
+    await boot({ storage: { level: 1 } });
+    await settle();
+    const problems = [...contrastFailures()];
+    $('[data-level="2"]').click();
+    await settle();
+    problems.push(...contrastFailures());
+    $('[data-level="3"]').click();
+    await settle();
+    problems.push(...contrastFailures());
+    typeInto($('td.cell[data-i="0"][data-j="0"] .cell-in'), '3');
+    await settle();
+    problems.push(...contrastFailures());
+    assert(!problems.length, [...new Set(problems)].join(' | '));
+  }],
+  ['textos têm contraste suficiente nas janelas', async () => {
+    await boot();
+    const problems = [];
+    $('#btn-gallery').click();
+    await settle();
+    problems.push(...contrastFailures($('dialog.gallery')));
+    $('dialog.gallery').close();
+    const d = await createFromData('cliente,mes,estado\n1,jan,Ativo\n1,fev,Cancelou\n2,jan,Ativo\n2,fev,Ativo');
+    await settle();
+    problems.push(...contrastFailures(d));
+    d.close();
+    $('#btn-notebook').click();
+    await settle();
+    const nb = $('dialog.notebook');
+    nb.querySelector('details').open = true;
+    await settle();
+    problems.push(...contrastFailures(nb));
+    nb.close();
+    $('.q').click();
+    await settle();
+    problems.push(...contrastFailures($('.balloon')));
+    assert(!problems.length, [...new Set(problems)].join(' | '));
+  }],
+
+  // ── 12. Celular
+  ['celular: alvos de toque com pelo menos 24 px', async () => {
+    await boot({ width: 375, height: 812 });
+    await settle();
+    const small = smallTargets();
+    assert(!small.length, small.join(' | '));
+    $('#btn-wizard').click();
+    wizardDialog().querySelector('[data-way="data"]').click();
+    typeInto(wizardDialog().querySelector('[data-f="dataText"]'), 'cliente,mes,estado\n1,jan,A\n1,fev,B');
+    const inDialog = smallTargets(wizardDialog());
+    assert(!inDialog.length, inDialog.join(' | '));
+  }],
+  ['celular: os botões da simulação ficam à vista', async () => {
+    await boot({ width: 375, height: 812 });
+    const inView = () => {
+      const r = $('[data-act="play"]').getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= win().innerHeight;
+    };
+    assert(inView(), 'no topo da página');
+    win().scrollTo(0, 99999);
+    await sleep(50);
+    assert(inView(), 'no fim da página');
+    const bar = $('.sim-main').getBoundingClientRect();
+    const dock = $('#challenge-dock .dock-inner').getBoundingClientRect();
+    assert(dock.bottom <= bar.top + 1, `o desafio não pode ficar atrás da barra (${dock.bottom} e ${bar.top})`);
+    $('[data-act="play"]').click();
+    same($('[data-act="play"] .txt').textContent, 'Pausar', 'o botão funciona');
+  }],
+  ['tela grande: a simulação continua no lugar de sempre', async () => {
+    await boot();
+    same(win().getComputedStyle($('.sim-main')).position, 'static', 'posição');
+  }],
+  ['celular: palavra longa não corta a tela', async () => {
+    const chain = { ...twoStates('Em atraso grave', 'Regularizado hoje'), meta: { title: 'Longo', unit: 'contrato', step: 'semestre letivo' } };
+    for (const width of [375, 320]) {
+      await boot({ width, height: 700, storage: { level: 3, chains: { 3: chain } } });
+      const stage = $('.stage');
+      assert(stage.scrollWidth <= stage.clientWidth + 1, `${width}px: conteúdo ${stage.scrollWidth}, espaço ${stage.clientWidth}`);
+      assert(doc().documentElement.scrollWidth <= win().innerWidth, `${width}px: a página rola para o lado`);
+      const bar = $('.sim-main').getBoundingClientRect();
+      assert(bar.left >= 0 && bar.right <= win().innerWidth, `${width}px: barra fora da tela`);
+    }
+  }],
+  ['celular: o balão não cobre o pote que explica', async () => {
+    await boot({ width: 375, height: 812, coach: true, storage: { level: 1 } });
+    const balloon = await until(() => { const b = $('.balloon'); return !b.hidden && b; }, 'o primeiro balão', 6000);
+    same(balloon.dataset.place, 'sheet', 'formato de celular');
+    await until(() => {
+      const jar = $('g.node[data-i="0"]').getBoundingClientRect();
+      return jar.bottom <= balloon.getBoundingClientRect().top && jar.top >= 0;
+    }, 'o pote aparecer acima do balão');
+    balloon.querySelector('.b-x').click();
+    assert(!doc().body.classList.contains('sheet-open') || !$('.balloon').hidden, 'fechar devolve o espaço');
+  }],
 ];
 
 let passed = 0;
 let failed = 0;
+const failures = [];
 try {
   for (const [name, fn] of TESTS) {
     try {
@@ -451,6 +781,7 @@ try {
       out.innerHTML += `<span class="pass">✓ ${esc(name)}</span>\n`;
     } catch (e) {
       failed++;
+      failures.push(`${name}: ${e.message}`);
       out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`;
     }
   }
@@ -464,6 +795,9 @@ try {
 }
 out.innerHTML += `\n<b class="${failed ? 'fail' : 'pass'}">${passed} passaram, ${failed} falharam</b>`;
 document.title = failed ? `FALHOU (${failed})` : `OK (${passed})`;
+if (new URLSearchParams(location.search).has('report')) {
+  fetch('/__report', { method: 'POST', body: JSON.stringify({ passed, failed, failures }) });
+}
 </script>
 </body>
 </html>

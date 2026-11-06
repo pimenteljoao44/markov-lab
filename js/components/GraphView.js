@@ -1,6 +1,6 @@
 // Diagrama da cadeia (SVG + D3). Cada estado é um POTE: o nível do líquido é a fração
 // das bolinhas que estão nele e a linha tracejada marca o equilíbrio π.
-import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
+import d3 from '../../vendor/d3/index.js';
 import { subscribe, actions, getState } from '../store.js';
 import { fmtP, clamp, num } from '../util.js';
 import { EPS } from '../math/analyze.js';
@@ -11,6 +11,8 @@ import { explain } from '../coach/api.js';
 
 const MARGIN = 104;
 const R = NODE_R;
+const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+const KEY_MOVE = 0.03;
 const WAVE_L = R * 0.9;
 let clipSeq = 0;
 
@@ -184,19 +186,16 @@ export class GraphView {
       .on('mouseenter', (ev, n) => actions.setHover({ type: 'node', i: n.i }))
       .on('mouseleave', () => actions.setHover(null))
       .on('click', (ev, n) => explain('jar-info', { i: n.i }))
-      .on('keydown', (ev, n) => {
-        if (ev.key === 'Enter' || ev.key === ' ') {
-          ev.preventDefault();
-          explain('jar-info', { i: n.i });
-        }
-      });
+      .on('focus', (ev, n) => actions.setHover({ type: 'node', i: n.i }))
+      .on('blur', () => actions.setHover(null))
+      .on('keydown', (ev, n) => this.nodeKey(ev, n));
     enter.transition().duration(400).style('opacity', 1);
 
     const all = enter.merge(ng);
     this.nodeSel = all;
     all
       .attr('data-i', (n) => n.i)
-      .attr('aria-label', (n) => `Estado ${n.st.label}. Abre a explicação.`)
+      .attr('aria-label', (n) => `Estado ${n.st.label}. Enter abre a explicação, setas percorrem as transições, Shift com setas move o pote.`)
       .classed('absorbing', (n) => d.absorbing.includes(n.i))
       .classed('warn', (n) => d.rowStatus[n.i] !== 'ok');
     all.select('.wave').attr('fill', (n) => n.st.color);
@@ -228,7 +227,16 @@ export class GraphView {
     }));
     const eg = this.gEdges.selectAll('g.edge').data(this.edges, (e) => e.key);
     eg.exit().remove();
-    const ee = eg.enter().append('g').attr('class', 'edge').style('opacity', 0);
+    const ee = eg
+      .enter()
+      .append('g')
+      .attr('class', 'edge')
+      .attr('tabindex', -1)
+      .attr('role', 'button')
+      .style('opacity', 0)
+      .on('focus', (ev, e) => actions.setHover({ type: 'edge', i: e.i, j: e.j }))
+      .on('blur', () => actions.setHover(null))
+      .on('keydown', (ev, e) => this.edgeKey(ev, e));
     ee.append('path').attr('class', 'hl-under');
     ee.append('path').attr('class', 'stroke');
     ee.append('path').attr('class', 'arrow');
@@ -239,6 +247,7 @@ export class GraphView {
       .on('click', (ev, e) => explain('edge-info', { i: e.i, j: e.j }));
     ee.transition().duration(400).style('opacity', 1);
     this.edgeSel = ee.merge(eg);
+    this.edgeSel.attr('aria-label', (e) => `Transição de ${states[e.i].label} para ${states[e.j].label}, chance ${fmtP(e.p, mode)}. Enter abre a explicação, Esc volta ao pote.`);
     this.edgeSel
       .select('.stroke')
       .attr('stroke', (e) => e.color)
@@ -266,6 +275,45 @@ export class GraphView {
     this.layout();
     this.applyHover(s);
     this.renderLevels(s);
+  }
+
+  // ── Teclado: Tab passa pelos potes; as setas entram nas transições que saem de cada um.
+  nodeKey(ev, n) {
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      explain('jar-info', { i: n.i });
+      return;
+    }
+    const dir = ARROWS[ev.key];
+    if (!dir) return;
+    ev.preventDefault();
+    if (ev.shiftKey) {
+      actions.moveState(n.i, clamp(n.st.x + dir[0] * KEY_MOVE, 0, 1), clamp(n.st.y + dir[1] * KEY_MOVE, 0, 1));
+      return;
+    }
+    const out = this.edgesFrom(n.i);
+    if (out.length) out[dir[0] + dir[1] > 0 ? 0 : out.length - 1].focus();
+  }
+
+  edgeKey(ev, e) {
+    const jar = () => this.gNodes.selectAll('g.node').filter((n) => n.i === e.i).node();
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      explain('edge-info', { i: e.i, j: e.j });
+    } else if (ev.key === 'Escape') {
+      jar()?.focus();
+    } else if (ev.key === 'Tab') {
+      jar()?.focus(); // o Tab segue a partir do pote, sem passar por todas as setas
+    } else if (ARROWS[ev.key]) {
+      ev.preventDefault();
+      const out = this.edgesFrom(e.i);
+      const step = ARROWS[ev.key][0] + ARROWS[ev.key][1];
+      out[(out.indexOf(ev.currentTarget) + step + out.length) % out.length].focus();
+    }
+  }
+
+  edgesFrom(i) {
+    return this.gEdges.selectAll('g.edge').filter((e) => e.i === i).nodes();
   }
 
   /** Geometria atual da aresta i→j (cache invalidado a cada tick). */
