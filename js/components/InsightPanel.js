@@ -9,6 +9,16 @@ import { isPiHidden, activeChallenge } from '../challenges/definitions.js';
 const dot = (st) => `<i class="dot" style="background:${st.color}"></i>`;
 const name = (st) => `<b>${escapeHtml(st.label)}</b>`;
 
+/** Sem irredutibilidade, o destino só depende do início quando há mais de uma classe fechada. */
+function reducibleWhy(d, S) {
+  const closed = d.classes.filter((c) => c.closed);
+  if (closed.length === 1) {
+    const names = closed[0].members.map((m) => name(S[m])).join(', ');
+    return `<p>Falta <b>irredutibilidade</b>: nem todo estado alcança todos os outros. Mas só existe uma classe fechada (${names}): todos terminam nela, de onde quer que comecem.</p>`;
+  }
+  return `<p>Falta <b>irredutibilidade</b>: há ${closed.length} classes fechadas e ninguém passa de uma para outra, então o destino depende de onde se começa.</p>`;
+}
+
 export class InsightPanel {
   constructor(el) {
     this.el = el;
@@ -93,7 +103,7 @@ export class InsightPanel {
       ? `<p>Irredutível + aperiódica ⇒ existe uma única π e, partindo de <b>qualquer</b> μ₀, a distribuição converge para ela:</p>
          <span class="tex" data-tex="\\lim_{t\\to\\infty} \\mu_0 P^t = \\pi" data-display></span>`
       : !d.isIrreducible
-        ? `<p>Falta <b>irredutibilidade</b>: nem todo estado alcança todos os outros, então o destino depende de onde se começa.</p>`
+        ? reducibleWhy(d, S)
         : `<p>Falta <b>aperiodicidade</b>: a distribuição gira em ondas em vez de convergir.</p>`;
     parts.push(this.item('ergodic', d.isErgodic ? 'ok' : 'warn', 'Ergódica', d.isErgodic ? 'sim' : 'não', ergWhy, 'ergodic'));
 

@@ -1,11 +1,18 @@
 // Editor da matriz P (níveis 2–3) e regras em linguagem natural (nível 1).
 // Hover bidirecional com o grafo e aviso visual não-bloqueante para linhas que não somam 1.
 import { subscribe, actions, update, getState } from '../store.js';
-import { escapeHtml, fmtP, parseProb, renderTex, clamp, texNum, MAX_STATES } from '../util.js';
+import { escapeHtml, fmtP, parseProb, renderTex, clamp, texNum, normalizeRow, MAX_STATES } from '../util.js';
 import { vocab } from '../vocab.js';
 import { LEVELS } from '../levels/index.js';
 import { helpDot } from '../coach/api.js';
-import { toast } from './Toast.js';
+import { toast, undoToast } from './Toast.js';
+
+/** Mostra o valor na célula; valores raros têm mais dígitos e usam letra menor para caber. */
+function showCell(inp, v, mode) {
+  inp.value = fmtP(v, mode);
+  inp.classList.toggle('long', inp.value.length > 5);
+  inp.title = inp.value;
+}
 
 export class MatrixEditor {
   constructor(el) {
@@ -166,7 +173,7 @@ export class MatrixEditor {
       tr.querySelectorAll('td.cell').forEach((td, j) => {
         const v = M[i][j];
         const inp = td.querySelector('.cell-in');
-        if (document.activeElement !== inp) inp.value = fmtP(v, mode);
+        if (document.activeElement !== inp) showCell(inp, v, mode);
         td.classList.toggle('zero', !v);
         const eff = d.effective[i][j];
         td.querySelector('.bar i').style.setProperty('--p', eff);
@@ -213,7 +220,7 @@ export class MatrixEditor {
         const step = (e.shiftKey ? 0.1 : 0.01) * (e.key === 'ArrowUp' ? 1 : -1);
         const v = clamp(Math.round((getState().chain.matrix[i][j] + step) * 1000) / 1000, 0, 10);
         actions.setCell(i, j, v);
-        inp.value = fmtP(v, getState().ui.matrixMode);
+        showCell(inp, v, getState().ui.matrixMode);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         const below = el.querySelector(`td.cell[data-i="${i + 1}"][data-j="${j}"] .cell-in`);
@@ -227,7 +234,7 @@ export class MatrixEditor {
       const inp = e.target.closest('.cell-in');
       if (inp) {
         const td = inp.parentElement;
-        inp.value = fmtP(getState().chain.matrix[+td.dataset.i][+td.dataset.j], getState().ui.matrixMode);
+        showCell(inp, getState().chain.matrix[+td.dataset.i][+td.dataset.j], getState().ui.matrixMode);
       }
       const ren = e.target.closest('[data-rename]');
       if (ren) actions.renameState(+ren.dataset.rename, ren.value.trim());
@@ -260,7 +267,7 @@ export class MatrixEditor {
       if (del) {
         const i = +del.dataset.del;
         const label = getState().chain.states[i].label;
-        if (actions.removeState(i)) toast(`Estado “${label}” removido`, { sub: 'As linhas que apontavam para ele podem não somar 1 agora.' });
+        if (actions.removeState(i)) undoToast(`Estado “${label}” removido`, { sub: 'As linhas que apontavam para ele podem não somar 1 agora.' });
         return;
       }
       const act = e.target.closest('[data-act]')?.dataset.act;
@@ -268,14 +275,13 @@ export class MatrixEditor {
         if (!actions.addState()) toast(`O Sandbox aceita até ${MAX_STATES} estados`, { type: 'warn', sub: 'Junte estados parecidos para abrir espaço.' });
       } else if (act === 'random') {
         const n = getState().chain.states.length;
-        const M = Array.from({ length: n }, () => {
+        const M = Array.from({ length: n }, (_, i) => {
           const r = Array.from({ length: n }, () => (Math.random() < 0.35 ? 0 : Math.random()));
           if (r.every((v) => v === 0)) r[Math.floor(Math.random() * n)] = 1;
-          const sum = r.reduce((a, b) => a + b, 0);
-          return r.map((v) => Math.round((v / sum) * 100) / 100);
+          return normalizeRow(r, i);
         });
-        update((s) => (s.chain.matrix = M), 'chain');
-        actions.normalizeAll();
+        actions.setMatrix(M);
+        undoToast('Valores sorteados', { sub: 'A matriz anterior pode ser recuperada.' });
       } else if (act === 'normalize-all') {
         actions.normalizeAll();
       }

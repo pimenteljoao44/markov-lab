@@ -3,10 +3,36 @@
 // check(ctx) → { done, progress ∈ [0,1], live? }   ctx = { s, d, sim, v }
 import { pct, num } from '../util.js';
 import { vocab } from '../vocab.js';
+import { mulberry32 } from '../math/rng.js';
 
 const lab = (s, i) => s.chain.states[i]?.label ?? '?';
 
 export const context = (s) => ({ s, d: s.derived, sim: s.simulation, v: vocab(s.chain) });
+
+const seedOf = (text) => [...text].reduce((h, c) => (Math.imul(h, 31) + c.codePointAt(0)) | 0, 7);
+
+/** Embaralha de forma estável: a mesma pergunta mantém a ordem das opções entre redesenhos. */
+function shuffled(list, seed) {
+  const rand = mulberry32(seed);
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** Duas alternativas erradas, nunca com o mesmo texto da certa nem entre si. */
+function distinctDistractors(right, candidates) {
+  const used = new Set([pct(right)]);
+  return candidates
+    .filter(({ value }) => {
+      if (used.has(pct(value))) return false;
+      used.add(pct(value));
+      return true;
+    })
+    .slice(0, 2);
+}
 
 /** Texto de desafio pode ser fixo ou depender do modelo. */
 export const say = (x, ctx) => (typeof x === 'function' ? x(ctx) : x);
@@ -25,14 +51,18 @@ export const CHALLENGES = [
     ],
     quiz(ctx) {
       const P = ctx.d.effective;
+      const { lab } = ctx.v;
       const right = P[1][0];
-      const trap = P[0][0];
-      const avg = (right + trap) / 2;
+      const wrong = distinctDistractors(right, [
+        { value: (right + P[0][0]) / 2, why: 'Isso mistura o passado com o presente, como se a cadeia tivesse memória. Ela não tem.' },
+        { value: P[0][0], why: `Essa é a regra de quem está em ${lab(0)}. Mas agora está em ${lab(1)}.` },
+        { value: P[1][1], why: `Essa é a chance de continuar em ${lab(1)}, não a de ir para ${lab(0)}.` },
+        ...[0.5, 0.25, 0.75, 1, 0].map((value) => ({ value, why: `Não é isso que diz a regra de quem está em ${lab(1)}. Confira ao lado.` })),
+      ]);
+      const numeric = [{ value: right, correct: true }, ...wrong];
       return {
         options: [
-          { label: pct(avg), correct: false, why: 'Isso mistura o passado com o presente, como se a cadeia tivesse memória. Ela não tem.' },
-          { label: pct(right), correct: true },
-          { label: pct(trap), correct: false, why: `Essa é a regra de quem está em ${ctx.v.lab(0)}. Mas agora está em ${ctx.v.lab(1)}.` },
+          ...shuffled(numeric, seedOf(`${lab(0)}|${lab(1)}|${pct(right)}`)).map(({ value, correct = false, why }) => ({ label: pct(value), correct, why })),
           { label: 'Depende do histórico', correct: false, why: 'Numa cadeia de Markov o histórico não entra na conta: o estado atual basta.' },
         ],
       };

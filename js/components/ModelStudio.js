@@ -4,7 +4,8 @@ import { escapeHtml, MAX_STATES, PALETTE, normalizeRow, fmtP } from '../util.js'
 import { pluralPt, vocab } from '../vocab.js';
 import { makeChain } from '../models/chain.js';
 import { GROUPS, modelsForLevel, buildModel } from '../models/catalog.js';
-import { parseSequences, estimateChain, parseTable } from '../math/estimate.js';
+import { readHistory, estimateChain, parseTable } from '../math/estimate.js';
+import { undoToast } from './Toast.js';
 
 const IDEAS = [
   { name: 'Clientes de uma loja', unit: 'cliente', step: 'mês', states: ['Novo', 'Frequente', 'Sumido', 'Perdido'] },
@@ -32,8 +33,14 @@ const dialog = (cls, label) => {
   d.className = `studio ${cls}`;
   d.setAttribute('aria-label', label);
   document.body.appendChild(d);
+  // Só fecha se o clique começou e terminou fora: selecionar texto e soltar o mouse fora não conta.
+  let pressedOutside = false;
+  d.addEventListener('mousedown', (e) => {
+    pressedOutside = e.target === d;
+  });
   d.addEventListener('click', (e) => {
-    if (e.target === d || e.target.closest('[data-close]')) d.close();
+    if (e.target.closest('[data-close]') || (e.target === d && pressedOutside)) d.close();
+    pressedOutside = false;
   });
   return d;
 };
@@ -47,6 +54,7 @@ export class ModelStudio {
     this.gallery = dialog('gallery', 'Trocar modelo');
     this.editor = dialog('editor', 'Editar nomes do modelo');
     this.wizard = dialog('wizard', 'Modelar meu problema');
+    this.link = dialog('editor', 'Copiar link do modelo');
     this.bindGallery();
     this.bindEditor();
     this.bindWizard();
@@ -88,6 +96,7 @@ export class ModelStudio {
       if (!c) return;
       actions.loadChain(buildModel(c.dataset.model));
       this.gallery.close();
+      undoToast('Modelo trocado', { sub: 'O anterior pode ser recuperado.' });
     });
   }
 
@@ -122,9 +131,20 @@ export class ModelStudio {
     });
   }
 
+  // ───────── Link compartilhável ─────────
+  /** Quando o navegador não deixa copiar sozinho, o link fica à mão para copiar. */
+  openShareLink(url) {
+    this.link.innerHTML = `
+      <header class="dlg-head"><h2>Copie o link</h2>${closeBtn}</header>
+      <p class="dlg-sub">O navegador não deixou copiar automaticamente. O link já está selecionado: use Ctrl+C.</p>
+      <div class="dlg-body"><input class="field mono" readonly value="${escapeHtml(url)}" aria-label="Link do modelo"></div>`;
+    this.link.showModal();
+    this.link.querySelector('input').select();
+  }
+
   // ───────── Assistente ─────────
-  openWizard(way = 'words') {
-    this.w = {
+  blankDraft(way) {
+    return {
       way,
       page: 1,
       title: '',
@@ -134,9 +154,26 @@ export class ModelStudio {
       labels: [],
       weights: [],
       dataText: '',
+      dataOpts: {},
       tableText: '',
       error: '',
+      resumed: false,
     };
+  }
+
+  hasDraft() {
+    const { w } = this;
+    return !!w && (w.page > 1 || [w.title, w.unit, w.step, w.statesText, w.dataText, w.tableText].some((x) => x.trim()));
+  }
+
+  /** Fechar a janela não apaga nada: o rascunho continua até o modelo ser criado ou a pessoa recomeçar. */
+  openWizard(way = 'words') {
+    if (this.hasDraft()) {
+      this.w.resumed = true;
+      this.w.error = '';
+    } else {
+      this.w = this.blankDraft(way);
+    }
     this.renderWizard();
     this.wizard.showModal();
   }
@@ -150,6 +187,7 @@ export class ModelStudio {
       <div class="wz-tabs" role="tablist" aria-label="Como você quer começar">
         ${tab('words', 'Descrever em palavras')}${tab('data', 'Tenho dados')}${tab('table', 'Colar uma tabela')}
       </div>
+      ${this.w.resumed ? `<p class="wz-resume">Continuando de onde você parou. <button type="button" class="text-btn inline" data-restart>Começar do zero</button></p>` : ''}
       <div class="dlg-body" data-wz-body>${body}</div>
       <footer class="dlg-foot" data-wz-foot>${this.wizardFoot()}</footer>`;
     if (way !== 'words') this.previewPaste();
@@ -244,7 +282,8 @@ export class ModelStudio {
         <span><button type="button" class="text-btn" data-sample="data">usar exemplo</button>
         <label class="text-btn file-btn">abrir arquivo<input type="file" data-file accept=".csv,.txt,.tsv,text/plain,text/csv" hidden></label></span></div>
       <textarea id="wz-data" class="field area mono" data-f="dataText" rows="7" placeholder="Ativo, Ativo, Pausado, Ativo\nNovo, Ativo, Cancelou">${escapeHtml(w.dataText)}</textarea>
-      <p class="wz-tip"><b>Formatos aceitos:</b> uma pessoa ou item por linha, com vírgulas ou setas; uma coluna de planilha, com um estado por linha; ou pares “de, para”. O arquivo é lido só no seu navegador: nada é enviado.</p>
+      <p class="wz-tip"><b>Formatos aceitos:</b> uma pessoa ou item por linha, com vírgulas ou setas; uma coluna de planilha, com um estado por linha; pares “de, para”; ou CSV com colunas como cliente, mês e estado. O arquivo é lido só no seu navegador: nada é enviado.</p>
+      <div data-format></div>
       <div class="wz-preview" data-preview aria-live="polite"></div>`;
   }
 
@@ -319,6 +358,10 @@ export class ModelStudio {
         Object.assign(this.w, { title: x.name, unit: x.unit, step: x.step, statesText: x.states.join('\n'), page: 2, error: '' });
         return this.renderWizard();
       }
+      if (t.closest('[data-restart]')) {
+        this.w = this.blankDraft(this.w.way);
+        return this.renderWizard();
+      }
       if (t.closest('[data-next]')) return this.goNext();
       if (t.closest('[data-back]')) {
         this.w.page--;
@@ -336,7 +379,7 @@ export class ModelStudio {
       const sample = t.closest('[data-sample]');
       if (sample) {
         if (sample.dataset.sample === 'data') {
-          Object.assign(this.w, { dataText: SAMPLE_SEQ, title: this.w.title || 'Assinantes (exemplo)', unit: this.w.unit || 'assinante', step: this.w.step || 'mês' });
+          Object.assign(this.w, { dataText: SAMPLE_SEQ, dataOpts: {}, title: this.w.title || 'Assinantes (exemplo)', unit: this.w.unit || 'assinante', step: this.w.step || 'mês' });
         } else {
           Object.assign(this.w, { tableText: SAMPLE_TABLE, title: this.w.title || 'Avaliação de um serviço', unit: this.w.unit || 'cliente', step: this.w.step || 'mês' });
         }
@@ -348,6 +391,7 @@ export class ModelStudio {
       const f = e.target.dataset?.f;
       if (f) {
         this.w[f] = e.target.value;
+        if (f === 'dataText') this.w.dataOpts = {}; // outro conteúdo: detecta o formato de novo
         if (f === 'statesText') this.updateStateCount();
         if (f === 'dataText' || f === 'tableText') this.previewPaste();
         return;
@@ -361,10 +405,19 @@ export class ModelStudio {
       }
     });
     d.addEventListener('change', async (e) => {
+      const fmt = e.target.dataset?.fmt;
+      if (fmt) {
+        const el = e.target;
+        this.w.dataOpts[fmt] = el.type === 'checkbox' ? el.checked : fmt === 'format' ? el.value : +el.value;
+        this.previewPaste();
+        this.wizard.querySelector(`[data-fmt="${fmt}"]`)?.focus();
+        return;
+      }
       if (!e.target.matches('[data-file]')) return;
       const file = e.target.files[0];
       if (!file) return;
       this.w.dataText = await file.text();
+      this.w.dataOpts = {};
       this.w.title = this.w.title || file.name.replace(/\.[^.]+$/, '');
       this.renderWizard();
     });
@@ -377,10 +430,33 @@ export class ModelStudio {
     el.textContent = n ? `${n} ${n === 1 ? 'estado' : 'estados'}${n > MAX_STATES ? `: o limite é ${MAX_STATES}` : ''}` : '';
   }
 
+  /** Quando o histórico é uma tabela, mostra como ela foi entendida e deixa corrigir. */
+  formatControls(h) {
+    if (!h.table) return '';
+    const pick = (key, label, value, none) => `<label>${label}
+      <select class="field" data-fmt="${key}">
+        ${none ? `<option value="-1" ${value < 0 ? 'selected' : ''}>${none}</option>` : ''}
+        ${h.columns.map((c, i) => `<option value="${i}" ${i === value ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+      </select></label>`;
+    const long = h.format === 'long';
+    return `<div class="wz-format">
+      <label>Como ler
+        <select class="field" data-fmt="format">
+          <option value="sequences" ${long ? '' : 'selected'}>Uma sequência por linha</option>
+          <option value="long" ${long ? 'selected' : ''}>Uma observação por linha</option>
+        </select></label>
+      ${long
+        ? `${pick('id', 'Quem é', h.id, 'um item só')}${pick('time', 'Quando', h.time, 'ordem das linhas')}${pick('state', 'Estado', h.state)}`
+        : pick('skip', 'Coluna a ignorar', h.skip, 'nenhuma')}
+      <label class="wz-check"><input type="checkbox" data-fmt="header" ${h.header ? 'checked' : ''}> A primeira linha é cabeçalho</label>
+    </div>`;
+  }
+
   /** Lê o que foi colado e mostra o resultado antes de criar o modelo. */
   previewPaste() {
     const { w } = this;
     const box = this.wizard.querySelector('[data-preview]');
+    const format = this.wizard.querySelector('[data-format]');
     const btn = this.wizard.querySelector('[data-create]');
     const err = this.wizard.querySelector('[data-error]');
     if (!box || !btn) return;
@@ -388,6 +464,7 @@ export class ModelStudio {
     this.parsed = null;
     btn.disabled = true;
     const text = w.way === 'data' ? w.dataText : w.tableText;
+    if (format) format.innerHTML = '';
     if (!text.trim()) {
       box.innerHTML = '';
       return;
@@ -395,13 +472,17 @@ export class ModelStudio {
     try {
       const notes = [];
       if (w.way === 'data') {
-        const est = estimateChain(parseSequences(text));
+        const hist = readHistory(text, w.dataOpts);
+        format.innerHTML = this.formatControls(hist);
+        notes.push(...hist.notes);
+        const est = estimateChain(hist.sequences);
         if (est.labels.length < 2) throw new Error('Encontrei só 1 estado. Confira os separadores: vírgula, seta ou uma linha por estado.');
         if (!est.transitions) throw new Error('Nenhuma transição encontrada: cada sequência precisa de pelo menos 2 estados.');
         this.parsed = est;
         notes.push(`${est.labels.length} estados e ${est.transitions} transições observadas.`);
         if (est.transitions < 30) notes.push(`Com ${est.transitions} transições a estimativa é fraca: use como ponto de partida.`);
         if (est.noExit.length) notes.push(`${est.noExit.join(', ')}: não vi ninguém sair daqui, então virou um estado absorvente.`);
+        est.respelled.forEach(({ label, variants }) => notes.push(`Juntei grafias diferentes em “${label}”: ${variants.join(', ')}.`));
         if (est.merged.length) notes.push(`Os ${est.merged.length} estados mais raros foram reunidos em “Outros” para respeitar o limite de ${MAX_STATES}.`);
       } else {
         const tab = parseTable(text);
@@ -444,6 +525,7 @@ export class ModelStudio {
       },
     });
     this.wizard.close();
+    this.w = null;
     this.onCreate(chain);
   }
 }

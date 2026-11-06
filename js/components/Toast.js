@@ -1,17 +1,38 @@
 // Feedback não-bloqueante: toasts empilhados + explosão de confete.
 import { escapeHtml } from '../util.js';
+import { actions } from '../store.js';
 
-export function toast(title, { type = 'info', sub = '', timeout = 4200 } = {}) {
+export function toast(title, { type = 'info', sub = '', timeout = 4200, action = null } = {}) {
   const box = document.getElementById('toasts');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.innerHTML = `<b>${escapeHtml(title)}</b>${sub ? `<small>${escapeHtml(sub)}</small>` : ''}`;
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      action.run();
+      el.remove();
+    });
+    el.classList.add('has-action');
+    el.appendChild(btn);
+  }
   box.appendChild(el);
   while (box.children.length > 4) box.firstChild.remove();
   setTimeout(() => {
     el.classList.add('out');
     setTimeout(() => el.remove(), 400);
   }, timeout);
+}
+
+export const dismissActionToasts = () => document.querySelectorAll('.toast.has-action').forEach((t) => t.remove());
+
+/** Aviso de uma mudança grande, com um botão para voltar atrás. Só o aviso mais recente fica aberto. */
+export function undoToast(title, { sub = '', type = 'info', label = 'Desfazer' } = {}) {
+  dismissActionToasts();
+  toast(title, { type, sub, timeout: 9000, action: { label, run: () => actions.undo() } });
 }
 
 const COLORS = ['#2F6BFF', '#F29E1F', '#13A87B', '#E8467C', '#7A5AF8', '#FFE45C'];

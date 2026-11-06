@@ -90,6 +90,11 @@ dialog.editor { width: min(520px, calc(100vw - 24px)); }
 .wz-paste-head span { display: flex; gap: 4px; }
 .file-btn { cursor: pointer; }
 .wz-preview { margin-top: 10px; }
+.wz-resume { margin: 8px 18px 0; padding: 5px 10px; background: var(--marker-soft); border-radius: 8px; font-size: 13px; color: var(--ink-2); }
+.wz-format { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 10px; padding: 8px 10px; border: 1.5px solid var(--line-soft); border-radius: 8px; font-size: 12.5px; }
+.wz-format label { display: flex; flex-direction: column; gap: 3px; font-weight: 700; }
+.wz-format .field { width: auto; min-height: 30px; padding: 3px 6px; font-size: 13px; font-weight: 400; }
+.wz-format .wz-check { flex-direction: row; align-items: center; gap: 5px; min-height: 30px; font-weight: 400; }
 .wz-notes p { margin: 2px 0; font-size: 13px; color: var(--ink-2); }
 .wz-table-wrap { overflow-x: auto; margin-top: 8px; }
 .wz-table { border-collapse: collapse; font-size: 12.5px; }

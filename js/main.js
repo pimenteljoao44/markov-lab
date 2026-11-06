@@ -1,10 +1,11 @@
 // Ponto de entrada: estado inicial, componentes, troca de níveis, persistência e compartilhamento.
-import { initStore, getState, update, subscribe, actions } from './store.js';
+import { initStore, getState, update, subscribe, actions, historyState, rememberChain, dumpHistories, restoreHistories } from './store.js';
 import { LEVELS } from './levels/index.js';
 import { forLevel } from './challenges/definitions.js';
 import { deepClone, escapeHtml } from './util.js';
 import { vocab } from './vocab.js';
 import { sanitizeChain } from './models/chain.js';
+import { isShareHash, encodeShare, decodeShare } from './models/share.js';
 import { GraphView } from './components/GraphView.js';
 import { ParticleEngine } from './components/ParticleEngine.js';
 import { ParticleLayer } from './components/ParticleLayer.js';
@@ -17,7 +18,7 @@ import { ChallengeDock } from './components/ChallengeDock.js';
 import { StoryNav } from './components/StoryNav.js';
 import { ModelStudio } from './components/ModelStudio.js';
 import { Notebook } from './components/Notebook.js';
-import { toast } from './components/Toast.js';
+import { toast, undoToast, dismissActionToasts } from './components/Toast.js';
 import { Coach } from './coach/Coach.js';
 import { connectCoach, helpDot } from './coach/api.js';
 
@@ -42,15 +43,17 @@ for (const k of [1, 2, 3]) {
   }
 }
 
-// Link compartilhado (#m=base64) abre direto no Sandbox.
+// Link compartilhado (#m=base64) abre direto no Sandbox, sem perder o que estava lá.
 let level = [1, 2, 3].includes(saved.level) ? saved.level : 1;
-let sharedLoaded = false;
-if (location.hash.startsWith('#m=')) {
+let replacedByLink = null;
+if (isShareHash(location.hash)) {
   try {
-    const bytes = Uint8Array.from(atob(location.hash.slice(3)), (c) => c.charCodeAt(0));
-    chains[3] = sanitizeChain(JSON.parse(new TextDecoder().decode(bytes)));
+    const shared = decodeShare(location.hash);
+    replacedByLink = chains[3] || LEVELS[3].chain();
+    chains[3] = shared;
     level = 3;
-    sharedLoaded = true;
+    // O link já cumpriu seu papel: se ficasse na URL, recarregar a página descartaria as edições feitas depois.
+    history.replaceState(null, '', location.pathname + location.search);
   } catch {
     /* link inválido: segue com o que estava salvo */
   }
@@ -76,6 +79,20 @@ initStore({
     revealed: {},
   },
 });
+
+// Desfazer sobrevive a recarregar a página.
+const savedUndo = {};
+for (const k of [1, 2, 3]) {
+  savedUndo[k] = (Array.isArray(saved.undo?.[k]) ? saved.undo[k] : []).flatMap((c) => {
+    try {
+      return [sanitizeChain(c)];
+    } catch {
+      return [];
+    }
+  });
+}
+restoreHistories(savedUndo);
+if (replacedByLink) rememberChain(3, replacedByLink);
 
 // ── balões
 const coach = new Coach({ onSeenChange: () => updateNotebookCount() });
@@ -116,12 +133,14 @@ const studio = new ModelStudio({
   onCreate(chain) {
     if (getState().meta.level !== 3) switchLevel(3);
     actions.loadChain(chain);
+    undoToast('Modelo criado no Sandbox', { type: 'ok', sub: 'O que estava lá pode ser recuperado.' });
   },
 });
 
 function switchLevel(n) {
   const s = getState();
   if (n === s.meta.level) return;
+  dismissActionToasts(); // "Desfazer" só faz sentido no nível em que a mudança aconteceu
   chains[s.meta.level] = deepClone(s.chain);
   update((st) => {
     st.meta.level = n;
@@ -147,24 +166,52 @@ $('model-sub').addEventListener('click', (e) => {
   if (e.target.closest('#btn-edit')) studio.openEditor();
 });
 
+// ── desfazer e refazer
+$('btn-undo').addEventListener('click', () => actions.undo());
+$('btn-redo').addEventListener('click', () => actions.redo());
+function renderUndoButtons() {
+  const { canUndo, canRedo } = historyState();
+  $('btn-undo').disabled = !canUndo;
+  $('btn-redo').disabled = !canRedo;
+}
+subscribe((s, t) => {
+  if (t.has('chain') || t.has('layout') || t.has('level')) renderUndoButtons();
+});
+
 // primeira renderização
 update(null, 'chain', 'structure', 'layout', 'level', 'sim', 'challenge');
-if (sharedLoaded) toast('Modelo compartilhado aberto', { sub: 'Ele está no Sandbox. Suas alterações não mudam o link original.' });
 
 // ── persistência
-let saveTimer;
+function saveNow() {
+  const s = getState();
+  chains[s.meta.level] = deepClone(s.chain);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ level: s.meta.level, chains, completed: s.challenges.completed, matrixMode: s.ui.matrixMode, undo: dumpHistories() }));
+  } catch {
+    /* armazenamento indisponível */
+  }
+}
+let saveTimer = null;
 subscribe((s, t) => {
   if (!(t.has('chain') || t.has('layout') || t.has('level') || t.has('challenge') || t.has('ui'))) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    chains[s.meta.level] = deepClone(s.chain);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ level: s.meta.level, chains, completed: s.challenges.completed, matrixMode: s.ui.matrixMode }));
-    } catch {
-      /* armazenamento indisponível */
-    }
+    saveTimer = null;
+    saveNow();
   }, 300);
 });
+// Fechar ou recarregar logo depois de editar não pode perder a última mudança.
+window.addEventListener('pagehide', () => {
+  if (saveTimer === null) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  saveNow();
+});
+
+if (replacedByLink) {
+  saveNow(); // a URL já não tem o link: o modelo aberto precisa estar salvo
+  undoToast('Modelo compartilhado aberto', { sub: 'Ele está no Sandbox. Seu modelo anterior não foi perdido.', label: 'Voltar ao meu modelo' });
+}
 
 // ── arquivo: exportar, importar, compartilhar
 const menu = $('file-menu');
@@ -174,7 +221,12 @@ document.addEventListener('click', (e) => {
 
 const exportable = () => {
   const { meta, states, matrix } = getState().chain;
-  return { meta, states: states.map(({ id, label, color, x, y }) => ({ id, label, color, x: +x.toFixed(4), y: +y.toFixed(4) })), matrix };
+  return {
+    meta,
+    states: states.map(({ id, label, color, x, y }) => ({ id, label, color, x: +x.toFixed(4), y: +y.toFixed(4) })),
+    // 10 algarismos significativos: mantém eventos raros sem alongar o arquivo e o link com ruído de ponto flutuante.
+    matrix: matrix.map((row) => row.map((v) => +(+v).toPrecision(10))),
+  };
 };
 
 const fileName = (title) =>
@@ -206,7 +258,7 @@ fileInput.addEventListener('change', async () => {
     chain.meta.custom = true;
     if (getState().meta.level !== 3) switchLevel(3);
     actions.loadChain(chain);
-    toast('Modelo importado', { type: 'ok', sub: `${chain.states.length} estados no Sandbox.` });
+    undoToast('Modelo importado', { type: 'ok', sub: `${chain.states.length} estados no Sandbox.` });
   } catch (e) {
     const detail = e instanceof SyntaxError ? 'Este arquivo não é um JSON válido.' : e.message;
     toast('Não foi possível importar', { type: 'warn', sub: detail });
@@ -215,20 +267,26 @@ fileInput.addEventListener('change', async () => {
 
 $('btn-share').addEventListener('click', async () => {
   menu.open = false;
-  const bytes = new TextEncoder().encode(JSON.stringify(exportable()));
-  const hash = `#m=${btoa(String.fromCharCode(...bytes))}`;
-  const url = location.href.split('#')[0] + hash;
-  history.replaceState(null, '', hash);
+  const url = location.href.split('#')[0] + encodeShare(exportable());
   try {
     await navigator.clipboard.writeText(url);
     toast('Link copiado', { type: 'ok', sub: 'Quem abrir verá este modelo no Sandbox.' });
   } catch {
-    toast('Link pronto na barra de endereço', { sub: 'Copie a URL para compartilhar.' });
+    studio.openShareLink(url);
   }
 });
 
 // ── atalhos
 document.addEventListener('keydown', (e) => {
+  const key = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === 'z' || key === 'y')) {
+    // Em campo de texto, Ctrl+Z continua sendo o desfazer do próprio navegador.
+    if (document.querySelector('dialog[open]') || e.target.closest('input:not([type="range"]):not([type="checkbox"]), textarea, [contenteditable]')) return;
+    e.preventDefault();
+    if (key === 'y' || e.shiftKey) actions.redo();
+    else actions.undo();
+    return;
+  }
   if (e.target.closest('input, select, textarea, button, summary, dialog, [role="button"], [contenteditable]')) return;
   if (e.code === 'Space') {
     e.preventDefault();

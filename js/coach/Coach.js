@@ -153,6 +153,12 @@ export class Coach {
       if (s.chain.meta.custom) this.fire('model-ready');
       return;
     }
+    if (t.has('restore')) {
+      // Desfazer não é novidade: nada de balão anunciando o que a pessoa já tinha.
+      this.clear();
+      this.prev = snapshot(s);
+      return;
+    }
     if (t.has('hover')) this.onHover(s);
     if (t.has('derived') || t.has('sim')) {
       checkEvents(s, this.prev, (id, opts) => this.fire(id, opts));

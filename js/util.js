@@ -14,11 +14,22 @@ export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 /** Número com vírgula decimal (pt-BR). */
 export const num = (v, digits = 3) => (Number.isFinite(v) ? v.toFixed(digits).replace('.', ',') : '—');
 
+/** Valor pequeno demais para as casas normais: mantém dois algarismos significativos. */
+const digitsFor = (v) => Math.min(20, 1 - Math.floor(Math.log10(v)));
+const isTiny = (v, limit) => v >= 1e-12 && v < limit;
+
+/** Evento raro não aparece como 0 e quase certeza não aparece como 1: nenhum dos dois é verdade. */
+function readable(v, whole, limit, digits) {
+  if (isTiny(v, limit)) return v.toFixed(digitsFor(v)).replace(/0+$/, '');
+  if (isTiny(whole - v, limit)) return v.toFixed(digitsFor(whole - v));
+  return String(+v.toFixed(digits));
+}
+
 /** Probabilidade em decimal ("0,25") ou percentual ("25%"), sem zeros à direita. */
 export function fmtP(v, mode = 'decimal') {
   if (!Number.isFinite(v)) return '—';
-  if (mode === 'percent') return `${String(+(v * 100).toFixed(1)).replace('.', ',')}%`;
-  return String(+v.toFixed(3)).replace('.', ',');
+  if (mode === 'percent') return `${readable(v * 100, 100, 0.05, 1).replace('.', ',')}%`;
+  return readable(v, 1, 0.0005, 3).replace('.', ',');
 }
 
 export const pct = (v, digits = 1) => `${(v * 100).toFixed(digits).replace('.', ',')}%`;
@@ -40,15 +51,14 @@ export function parseProb(str) {
   return v;
 }
 
-/** Normaliza uma linha para somar exatamente 1 (4 casas), resíduo de arredondamento no maior valor. */
+/**
+ * Normaliza uma linha para somar 1, sem arredondar: uma chance de 1 em 30.000 precisa continuar
+ * existindo, porque zerá-la muda a estrutura da cadeia. Arredondar é papel de quem exibe (fmtP).
+ */
 export function normalizeRow(row, i) {
   const sum = row.reduce((a, b) => a + b, 0);
   if (sum <= 1e-12) return row.map((_, j) => (j === i ? 1 : 0));
-  const out = row.map((v) => Math.round((v / sum) * 1e4) / 1e4);
-  const diff = 1 - out.reduce((a, b) => a + b, 0);
-  const k = out.indexOf(Math.max(...out));
-  out[k] = Math.round((out[k] + diff) * 1e4) / 1e4;
-  return out;
+  return row.map((v) => v / sum);
 }
 
 /** Posições normalizadas (0..1): dupla lado a lado, trio em triângulo, o resto em círculo. */

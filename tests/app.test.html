@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Testes da interface</title>
+<style>
+  body { background:#f8fafd; color:#1f2a44; font:14px/1.6 ui-monospace, Consolas, monospace; padding:24px; }
+  .pass { color:#12a150 } .fail { color:#e5383b; font-weight:700 } h1 { font-size:16px }
+  iframe { width:1280px; height:800px; border:1px solid #c9d4e3; display:block; margin-top:16px; }
+</style>
+</head>
+<body>
+<h1>Interface: testes dos fluxos (o app roda na janela abaixo)</h1>
+<p>Os dados salvos neste navegador são guardados antes dos testes e recolocados no fim.</p>
+<pre id="out"></pre>
+<div id="stage"></div>
+<script type="module">
+import { encodeShare, decodeShare } from '../js/models/share.js';
+
+const KEY = 'markovlab:v3';
+const COACH = 'markovlab:coach';
+const BASE = new URL('../', location.href).href;
+const out = document.getElementById('out');
+const backup = { [KEY]: localStorage.getItem(KEY), [COACH]: localStorage.getItem(COACH) };
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, what = 'condição', ms = 4000) {
+  const end = performance.now() + ms;
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (performance.now() > end) throw new Error(`esperei demais por: ${what}`);
+    await sleep(20);
+  }
+}
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function assert(c, msg = 'falhou') { if (!c) throw new Error(msg); }
+function same(a, b, label = 'valor') { assert(a === b, `${label}: veio "${a}", esperado "${b}"`); }
+
+let frame = null;
+const win = () => frame.contentWindow;
+const doc = () => frame.contentDocument;
+const $ = (sel) => doc().querySelector(sel);
+const $$ = (sel) => [...doc().querySelectorAll(sel)];
+const ready = () => until(() => $('#model-title')?.textContent, 'o app abrir', 15000);
+
+const twoStates = (a, b) => ({ meta: { title: `${a} e ${b}`, unit: 'cliente', step: 'mês' }, states: [{ id: 'a', label: a }, { id: 'b', label: b }], matrix: [[0.5, 0.5], [0.5, 0.5]] });
+const threeStates = (matrix) => ({ meta: { title: 'Três', unit: 'cliente', step: 'mês' }, states: ['A', 'B', 'C'].map((label, i) => ({ id: `s${i}`, label })), matrix });
+
+/** Abre o app do zero, com os dados salvos pedidos e sem balões. */
+async function boot({ hash = '', storage = { level: 3 } } = {}) {
+  frame?.remove();
+  await sleep(0);
+  localStorage.removeItem(KEY);
+  localStorage.setItem(COACH, JSON.stringify({ enabled: false, seen: [] }));
+  if (storage) localStorage.setItem(KEY, JSON.stringify(storage));
+  frame = document.createElement('iframe');
+  frame.src = `${BASE}index.html${hash}`;
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  document.getElementById('stage').appendChild(frame);
+  await loaded;
+  await ready();
+}
+
+/** Recarrega como F5, sem esperar o salvamento automático. */
+async function reload() {
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  win().location.reload();
+  await loaded;
+  await ready();
+}
+
+const app = () => win().eval(`import(${JSON.stringify(`${BASE}js/store.js`)})`);
+const labels = () => $$('.head-in').map((i) => i.value);
+const saved = () => JSON.parse(localStorage.getItem(KEY));
+
+function rename(i, value) {
+  const inp = $$('.head-in')[i];
+  inp.value = value;
+  inp.dispatchEvent(new (win().FocusEvent)('focusout', { bubbles: true }));
+}
+function typeInto(el, value) {
+  el.value = value;
+  el.dispatchEvent(new (win().Event)('input', { bubbles: true }));
+}
+function choose(el, value) {
+  el.value = value;
+  el.dispatchEvent(new (win().Event)('change', { bubbles: true }));
+}
+function press(key, opts = {}) {
+  doc().body.dispatchEvent(new (win().KeyboardEvent)('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+}
+function stubClipboard(impl) {
+  Object.defineProperty(win().navigator, 'clipboard', { configurable: true, value: { writeText: impl } });
+}
+/** Clique do mouse que começa em `from` e termina em `to`, como uma pessoa faz. */
+function mouseClick(from, to = from) {
+  const M = win().MouseEvent;
+  from.dispatchEvent(new M('mousedown', { bubbles: true, view: win() }));
+  to.dispatchEvent(new M('mouseup', { bubbles: true, view: win() }));
+  // O navegador manda o clique para o ancestral comum de onde apertou e de onde soltou.
+  let target = from;
+  while (!target.contains(to)) target = target.parentElement;
+  target.dispatchEvent(new M('click', { bubbles: true, view: win() }));
+}
+const toastAction = () => until(() => $('.toast-action'), 'botão de desfazer no aviso');
+const wizardDialog = () => $('dialog.wizard');
+const wizardPage = () => wizardDialog().querySelector('.wz-steps .on')?.textContent;
+
+async function fillWizardToLastPage() {
+  $('#btn-wizard').click();
+  const d = wizardDialog();
+  typeInto(d.querySelector('[data-f="title"]'), 'Meu modelo');
+  typeInto(d.querySelector('[data-f="unit"]'), 'cliente');
+  typeInto(d.querySelector('[data-f="step"]'), 'mês');
+  d.querySelector('[data-next]').click();
+  typeInto(d.querySelector('[data-f="statesText"]'), 'Novo\nAtivo\nCancelou');
+  d.querySelector('[data-next]').click();
+  typeInto(d.querySelector('[data-w="0-1"]'), '70');
+}
+
+async function createFromData(text) {
+  $('#btn-wizard').click();
+  const d = wizardDialog();
+  d.querySelector('[data-way="data"]').click();
+  typeInto(d.querySelector('[data-f="title"]'), 'Do arquivo');
+  typeInto(d.querySelector('[data-f="dataText"]'), text);
+  return d;
+}
+
+const TESTS = [
+  // ── 1. Link compartilhado
+  ['F5 depois de copiar o link mantém as edições', async () => {
+    await boot();
+    let copied = '';
+    stubClipboard(async (t) => { copied = t; });
+    rename(0, 'Antes do link');
+    $('#btn-share').click();
+    await until(() => copied, 'copiar');
+    same(win().location.hash, '', 'hash depois de copiar');
+    assert(copied.includes('#m='), 'o link copiado precisa levar o modelo');
+    same(decodeShare(copied.slice(copied.indexOf('#'))).states[0].label, 'Antes do link', 'modelo no link');
+    rename(0, 'Editado depois');
+    await reload();
+    same(labels()[0], 'Editado depois', 'nome depois do F5');
+    same(win().location.hash, '', 'hash depois do F5');
+    same($$('.toast').length, 0, 'avisos depois do F5');
+  }],
+  ['sem permissão para copiar, o link aparece numa janela', async () => {
+    await boot();
+    stubClipboard(async () => { throw new Error('negado'); });
+    $('#btn-share').click();
+    const dlg = await until(() => $('dialog[aria-label="Copiar link do modelo"][open]'), 'janela do link');
+    const url = dlg.querySelector('input').value;
+    assert(url.includes('#m='), url);
+    same(win().location.hash, '', 'hash');
+    dlg.querySelector('[data-close]').click();
+    assert(!dlg.open, 'precisa fechar');
+  }],
+  ['abrir um link não destrói o modelo que estava salvo', async () => {
+    await boot({ hash: encodeShare(twoStates('Do link A', 'Do link B')), storage: { level: 1, chains: { 3: twoStates('Meu A', 'Meu B') } } });
+    same(labels()[0], 'Do link A', 'modelo aberto');
+    same(win().location.hash, '', 'hash');
+    assert($('[data-level="3"]').classList.contains('active'), 'precisa abrir no Sandbox');
+    same(saved().chains[3].states[0].label, 'Do link A', 'modelo salvo');
+    same(saved().undo[3].at(-1).states[0].label, 'Meu A', 'modelo anterior guardado');
+    same((await toastAction()).textContent, 'Voltar ao meu modelo', 'botão do aviso');
+    await reload();
+    same(labels()[0], 'Do link A', 'recarregar continua no modelo do link');
+    $('#btn-undo').click();
+    same(labels()[0], 'Meu A', 'voltar ao modelo anterior');
+  }],
+  ['o botão do aviso volta ao modelo anterior', async () => {
+    await boot({ hash: encodeShare(twoStates('Do link A', 'Do link B')), storage: { level: 3, chains: { 3: twoStates('Meu A', 'Meu B') } } });
+    (await toastAction()).click();
+    same(labels()[0], 'Meu A', 'modelo');
+    await reload();
+    same(labels()[0], 'Meu A', 'depois do F5');
+  }],
+
+  // ── 2. Desfazer
+  ['trocar pela galeria pode ser desfeito e refeito', async () => {
+    await boot();
+    assert($('#btn-undo').disabled && $('#btn-redo').disabled, 'nada para desfazer ainda');
+    rename(0, 'Meu estado');
+    assert(!$('#btn-undo').disabled, 'renomear habilita desfazer');
+    $('#btn-gallery').click();
+    $('dialog.gallery [data-model]').click();
+    assert(!$('dialog[open]'), 'a galeria precisa fechar');
+    const trocado = labels()[0];
+    assert(trocado !== 'Meu estado', 'o modelo precisa trocar');
+    (await toastAction()).click();
+    same(labels()[0], 'Meu estado', 'pelo aviso');
+    assert(!$('.toast-action'), 'o aviso some depois de usado');
+    $('#btn-redo').click();
+    same(labels()[0], trocado, 'refazer pelo botão');
+    press('z', { ctrlKey: true });
+    same(labels()[0], 'Meu estado', 'Ctrl+Z');
+    press('y', { ctrlKey: true });
+    same(labels()[0], trocado, 'Ctrl+Y');
+    press('z', { ctrlKey: true });
+    press('z', { ctrlKey: true, shiftKey: true });
+    same(labels()[0], trocado, 'Ctrl+Shift+Z');
+  }],
+  ['Ctrl+Z dentro de um campo de texto fica com o navegador', async () => {
+    await boot();
+    rename(0, 'Meu estado');
+    const cell = $('.cell-in');
+    cell.focus();
+    cell.dispatchEvent(new (win().KeyboardEvent)('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    same(labels()[0], 'Meu estado', 'nome');
+  }],
+  ['desfazer sobrevive a recarregar a página', async () => {
+    await boot();
+    rename(0, 'Meu estado');
+    $('#btn-gallery').click();
+    $('dialog.gallery [data-model]').click();
+    await reload();
+    assert(!$('#btn-undo').disabled, 'precisa continuar habilitado');
+    $('#btn-undo').click();
+    same(labels()[0], 'Meu estado', 'nome recuperado');
+  }],
+  ['sortear valores e remover estado podem ser desfeitos', async () => {
+    await boot();
+    const { getState } = await app();
+    const antes = JSON.stringify(getState().chain.matrix);
+    $('[data-act="random"]').click();
+    assert(JSON.stringify(getState().chain.matrix) !== antes, 'sortear muda a matriz');
+    assert(getState().derived.allRowsOk, 'sortear deixa as linhas somando 1');
+    (await toastAction()).click();
+    same(JSON.stringify(getState().chain.matrix), antes, 'matriz depois de desfazer');
+    const n = labels().length;
+    $$('[data-del]')[0].click();
+    same(labels().length, n - 1, 'estados depois de remover');
+    (await toastAction()).click();
+    same(labels().length, n, 'estados depois de desfazer');
+    same(JSON.stringify(getState().chain.matrix), antes, 'matriz depois de desfazer a remoção');
+  }],
+  ['digitar numa célula é um passo só', async () => {
+    await boot();
+    const { getState } = await app();
+    const antes = getState().chain.matrix[0][0];
+    const cell = $('td.cell[data-i="0"][data-j="0"] .cell-in');
+    for (const text of ['0', '0,', '0,1', '0,12']) typeInto(cell, text);
+    same(getState().chain.matrix[0][0], 0.12, 'valor digitado');
+    $('#btn-undo').click();
+    same(getState().chain.matrix[0][0], antes, 'valor depois de desfazer');
+    assert($('#btn-undo').disabled, 'não pode sobrar passo intermediário');
+  }],
+  ['clique num pote não gera passo; arrastar gera', async () => {
+    await boot();
+    const node = $('g.node');
+    mouseClick(node);
+    win().dispatchEvent(new (win().MouseEvent)('mouseup', { view: win() }));
+    await sleep(50);
+    assert($('#btn-undo').disabled, 'clique não muda o modelo');
+    const M = win().MouseEvent;
+    node.dispatchEvent(new M('mousedown', { bubbles: true, view: win(), clientX: 300, clientY: 300 }));
+    win().dispatchEvent(new M('mousemove', { bubbles: true, view: win(), clientX: 420, clientY: 340 }));
+    win().dispatchEvent(new M('mouseup', { bubbles: true, view: win(), clientX: 420, clientY: 340 }));
+    await until(() => !$('#btn-undo').disabled, 'passo de desfazer do arraste');
+  }],
+  ['cada nível tem o seu desfazer', async () => {
+    await boot();
+    rename(0, 'Sandbox editado');
+    $('[data-level="2"]').click();
+    assert($('#btn-undo').disabled, 'nível 2 sem histórico');
+    $('[data-level="3"]').click();
+    assert(!$('#btn-undo').disabled, 'nível 3 mantém o histórico');
+    $('#btn-undo').click();
+    assert(labels()[0] !== 'Sandbox editado', 'desfaz no nível certo');
+  }],
+  ['desfazer um modelo trocado zera a simulação', async () => {
+    await boot();
+    $('[data-act="play"]').click();
+    $('#btn-gallery').click();
+    $('dialog.gallery [data-model]').click();
+    $('[data-act="play"]').click();
+    const { getState } = await app();
+    same(getState().simulation.status, 'running', 'rodando');
+    $('#btn-undo').click();
+    same(getState().simulation.status, 'idle', 'simulação depois de desfazer');
+  }],
+
+  // ── 3. Rascunho do assistente
+  ['clicar fora do assistente guarda o rascunho', async () => {
+    await boot();
+    await fillWizardToLastPage();
+    const d = wizardDialog();
+    same(wizardPage(), 'As chances', 'etapa');
+    mouseClick(d);
+    assert(!d.open, 'clicar fora fecha');
+    $('#btn-wizard').click();
+    assert(d.open, 'reabre');
+    same(wizardPage(), 'As chances', 'etapa ao reabrir');
+    same(d.querySelector('[data-wo="0-1"]').textContent, '70%', 'chance preenchida');
+    assert(d.querySelector('.wz-resume'), 'avisa que está continuando');
+    d.querySelector('[data-back]').click();
+    d.querySelector('[data-back]').click();
+    same(d.querySelector('[data-f="title"]').value, 'Meu modelo', 'nome preenchido');
+  }],
+  ['Esc também guarda o rascunho', async () => {
+    await boot();
+    await fillWizardToLastPage();
+    wizardDialog().close(); // é o que o navegador faz ao apertar Esc
+    $('#btn-wizard').click();
+    same(wizardPage(), 'As chances', 'etapa ao reabrir');
+  }],
+  ['"Começar do zero" limpa o rascunho', async () => {
+    await boot();
+    await fillWizardToLastPage();
+    const d = wizardDialog();
+    d.close();
+    $('#btn-wizard').click();
+    d.querySelector('[data-restart]').click();
+    same(wizardPage(), 'O problema', 'etapa');
+    same(d.querySelector('[data-f="title"]').value, '', 'nome');
+    assert(!d.querySelector('.wz-resume'), 'o aviso some');
+  }],
+  ['criar o modelo encerra o rascunho', async () => {
+    await boot();
+    await fillWizardToLastPage();
+    const d = wizardDialog();
+    d.querySelector('[data-create]').click();
+    assert(!d.open, 'fecha');
+    same(labels().join(), 'Novo,Ativo,Cancelou', 'estados');
+    $('#btn-wizard').click();
+    same(d.querySelector('[data-f="title"]').value, '', 'novo assistente vazio');
+    assert(!d.querySelector('.wz-resume'), 'sem aviso');
+    d.close();
+    (await toastAction()).click();
+    assert(labels().join() !== 'Novo,Ativo,Cancelou', 'dá para desfazer a criação');
+  }],
+  ['selecionar texto e soltar o mouse fora não fecha', async () => {
+    await boot();
+    $('#btn-wizard').click();
+    const d = wizardDialog();
+    d.querySelector('[data-way="data"]').click();
+    mouseClick(d.querySelector('[data-f="dataText"]'), d);
+    assert(d.open, 'precisa continuar aberto');
+    d.close();
+    d.querySelector('[data-way="words"]').click();
+  }],
+
+  // ── 4. Eventos raros
+  ['evento raro chega inteiro até o modelo e o link', async () => {
+    await boot();
+    const text = `${new Array(30000).fill('A').join('\n')}\nB\nA`;
+    const d = await createFromData(text);
+    assert([...d.querySelectorAll('.wz-table td')].some((td) => td.textContent === '0,000033'), 'a prévia precisa mostrar a chance rara');
+    d.querySelector('[data-create]').click();
+    const { getState } = await app();
+    assert(Math.abs(getState().chain.matrix[0][1] - 1 / 30000) < 1e-12, `matriz: ${getState().chain.matrix[0]}`);
+    same(getState().derived.absorbing.length, 0, 'absorventes');
+    assert(getState().derived.isErgodic, 'continua ergódica');
+    same($('td.cell[data-i="0"][data-j="1"] .cell-in').value, '0,000033', 'célula');
+    let copied = '';
+    stubClipboard(async (t) => { copied = t; });
+    $('#btn-share').click();
+    await until(() => copied, 'copiar');
+    const back = decodeShare(copied.slice(copied.indexOf('#')));
+    assert(Math.abs(back.matrix[0][1] - 1 / 30000) < 1e-12, `link: ${back.matrix[0]}`);
+    assert(copied.length < 2000, `link longo demais: ${copied.length}`);
+  }],
+
+  // ── 5. CSV no assistente
+  ['CSV com colunas vira os estados certos', async () => {
+    await boot();
+    const d = await createFromData('cliente,mes,estado\n1,jan,Ativo\n1,fev,Ativo\n1,mar,Cancelou\n2,jan,Ativo\n2,fev,Pausado\n2,mar,Ativo');
+    same(d.querySelector('[data-fmt="format"]').value, 'long', 'formato detectado');
+    assert(d.querySelector('[data-fmt="header"]').checked, 'cabeçalho detectado');
+    same(d.querySelector('[data-fmt="state"]').selectedOptions[0].textContent, 'estado', 'coluna do estado');
+    assert(/primeira linha/.test(d.querySelector('[data-preview]').textContent), 'precisa contar o que fez');
+    d.querySelector('[data-create]').click();
+    same(labels().join(), 'Ativo,Cancelou,Pausado', 'estados');
+    same($('.toast-action') ? 'sim' : 'não', 'sim', 'oferece desfazer');
+  }],
+  ['dá para corrigir a leitura sem perder o que foi colado', async () => {
+    await boot();
+    const d = await createFromData('cliente,mes,estado\n1,jan,Ativo\n1,fev,Cancelou\n2,jan,Ativo\n2,fev,Ativo');
+    const before = d.querySelector('.wz-table').textContent;
+    choose(d.querySelector('[data-fmt="state"]'), '1');
+    assert(/fev/.test(d.querySelector('.wz-table').textContent), 'trocar a coluna do estado refaz a prévia');
+    same(d.ownerDocument.activeElement.dataset.fmt, 'state', 'o foco fica no controle');
+    choose(d.querySelector('[data-fmt="state"]'), '2');
+    same(d.querySelector('.wz-table').textContent, before, 'voltar refaz a prévia');
+    choose(d.querySelector('[data-fmt="format"]'), 'sequences');
+    assert(d.querySelector('[data-fmt="skip"]'), 'mostra a opção do outro formato');
+    same(d.querySelector('[data-f="dataText"]').value.split('\n').length, 5, 'texto colado');
+    typeInto(d.querySelector('[data-f="dataText"]'), 'A,B\nA,A\nB,A');
+    same(d.querySelector('[data-fmt="format"]').value, 'sequences', 'texto novo detecta de novo');
+    assert(!d.querySelector('[data-fmt="state"]'), 'sem controles de colunas');
+    d.close();
+  }],
+  ['grafias diferentes são avisadas na prévia', async () => {
+    await boot();
+    const d = await createFromData('ativo, Ativo, Ativo, Cancelou');
+    assert(/Juntei grafias diferentes em “Ativo”/.test(d.querySelector('[data-preview]').textContent), d.querySelector('[data-preview]').textContent);
+    d.close();
+  }],
+  ['tabela com nome composto na prévia', async () => {
+    await boot();
+    $('#btn-wizard').click();
+    const d = wizardDialog();
+    d.querySelector('[data-way="table"]').click();
+    typeInto(d.querySelector('[data-f="tableText"]'), 'Em dia, Atrasado\n0.5, 0.5\n0.2, 0.8');
+    const heads = [...d.querySelectorAll('.wz-table thead th')].map((th) => th.textContent);
+    same(heads.slice(1).join(), 'Em dia,Atrasado', 'nomes');
+    typeInto(d.querySelector('[data-f="tableText"]'), '-0.5 1.5\n0.5 0.5');
+    assert(/negativo/.test(d.querySelector('[data-error]').textContent), 'erro explicado');
+    assert(d.querySelector('[data-create]').disabled, 'não deixa criar');
+    d.close();
+  }],
+
+  // ── 6. Texto do Diagnóstico
+  ['Diagnóstico: com uma classe fechada, o destino não depende do início', async () => {
+    await boot({ storage: { level: 3, chains: { 3: threeStates([[0.5, 0.5, 0], [0.5, 0.25, 0.25], [0, 0, 1]]) } } });
+    const why = $('#panel-insights [data-k="ergodic"] .why').textContent;
+    assert(/todos terminam nela/.test(why) && /C/.test(why), why);
+    assert(!/depende/.test(why), why);
+  }],
+  ['Diagnóstico: com duas classes fechadas, o destino depende do início', async () => {
+    await boot({ storage: { level: 3, chains: { 3: threeStates([[1, 0, 0], [0.5, 0, 0.5], [0, 0, 1]]) } } });
+    const why = $('#panel-insights [data-k="ergodic"] .why').textContent;
+    assert(/depende de onde se começa/.test(why) && /2 classes fechadas/.test(why), why);
+  }],
+
+  // ── 7. Quiz
+  ['quiz com chances iguais continua respondível', async () => {
+    await boot({ storage: { level: 1 } });
+    typeInto($('[data-r="0"]'), '40');
+    typeInto($('[data-r="1"]'), '60');
+    const buttons = () => $$('.quiz-opts button');
+    const texts = buttons().map((b) => b.textContent);
+    same(new Set(texts).size, 4, `opções diferentes (${texts.join(' | ')})`);
+    const wrong = buttons().find((b) => /%/.test(b.textContent) && b.textContent !== '40,0%');
+    wrong.click();
+    assert($('[data-explain]').textContent, 'o erro precisa ser explicado');
+    buttons().find((b) => b.textContent === '40,0%').click();
+    assert(/concluído/.test($('.ch-tag').textContent), 'a resposta certa conclui');
+  }],
+];
+
+let passed = 0;
+let failed = 0;
+try {
+  for (const [name, fn] of TESTS) {
+    try {
+      await fn();
+      passed++;
+      out.innerHTML += `<span class="pass">✓ ${esc(name)}</span>\n`;
+    } catch (e) {
+      failed++;
+      out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`;
+    }
+  }
+} finally {
+  frame?.remove();
+  await sleep(50);
+  for (const [k, v] of Object.entries(backup)) {
+    if (v === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, v);
+  }
+}
+out.innerHTML += `\n<b class="${failed ? 'fail' : 'pass'}">${passed} passaram, ${failed} falharam</b>`;
+document.title = failed ? `FALHOU (${failed})` : `OK (${passed})`;
+</script>
+</body>
+</html>

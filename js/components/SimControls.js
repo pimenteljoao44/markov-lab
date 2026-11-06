@@ -11,6 +11,8 @@ export const COUNTS = [1, 5, 10, 25, 50, 100, 200, 300, 500, 800, 1200, 2000];
 export const SPEEDS = [0.25, 0.5, 1, 1.5, 2, 3, 5];
 const HISTORY_MAX = 800;
 
+const idsOf = (s) => s.chain.states.map((st) => st.id).join('|');
+
 export function defaultSim(level) {
   return {
     status: 'idle',
@@ -52,7 +54,7 @@ export class SimControls {
     this.progress = 0;
     this.last = performance.now();
     this.stepTarget = null;
-    this.n = getState().chain.states.length;
+    this.stateIds = idsOf(getState());
 
     el.innerHTML = `
       <div class="sim-main">
@@ -105,8 +107,10 @@ export class SimControls {
 
     subscribe((s, t) => {
       if (t.has('structure') || t.has('level')) {
-        if (s.chain.states.length !== this.n || t.has('level') || t.has('model')) {
-          this.n = s.chain.states.length;
+        // Outros estados significam outro modelo: as bolinhas de antes não valem mais.
+        const ids = idsOf(s);
+        if (ids !== this.stateIds || t.has('level') || t.has('model')) {
+          this.stateIds = ids;
           this.reset();
         }
         this.syncControls();

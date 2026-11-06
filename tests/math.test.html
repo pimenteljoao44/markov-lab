@@ -2,20 +2,24 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Testes do motor matemático</title>
+<title>Testes do motor</title>
 <style>
   body { background:#f8fafd; color:#1f2a44; font:14px/1.6 ui-monospace, Consolas, monospace; padding:24px; }
   .pass { color:#12a150 } .fail { color:#e5383b; font-weight:700 } h1 { font-size:16px }
 </style>
 </head>
 <body>
-<h1>Motor matemático: testes</h1>
+<h1>Motor: testes (os fluxos da interface estão em <a href="app.test.html">app.test.html</a>)</h1>
 <pre id="out"></pre>
 <script type="module">
 import { analyze } from '../js/math/analyze.js';
 import { inverse, solve, evolve } from '../js/math/linalg.js';
 import { distributionAfter, hittingStats } from '../js/math/query.js';
-import { parseSequences, estimateChain, parseTable } from '../js/math/estimate.js';
+import { parseSequences, estimateChain, parseTable, readHistory, timeKey } from '../js/math/estimate.js';
+import { normalizeRow, fmtP, pct } from '../js/util.js';
+import { ChainHistory } from '../js/models/history.js';
+import { encodeShare, decodeShare } from '../js/models/share.js';
+import { byId } from '../js/challenges/definitions.js';
 import { pluralPt, sanitizeMeta } from '../js/vocab.js';
 import { sanitizeChain } from '../js/models/chain.js';
 import { MODELS, buildModel } from '../js/models/catalog.js';
@@ -159,6 +163,211 @@ t('tabela só com números e vírgula decimal', () => {
 });
 t('tabela CSV com ponto decimal', () => assert(vecNear(parseTable('0.5,0.5\n0.2,0.8').matrix[0], [0.5, 0.5])));
 t('tabela não quadrada explica o erro', () => throws(() => parseTable('1 2 3\n4 5 6'), /quadrada/));
+
+// ── eventos raros
+t('histórico: evento raro não vira zero nem cria absorvente', () => {
+  const seq = [...new Array(30000).fill('A'), 'B', 'A'];
+  const e = estimateChain([seq]);
+  assert(near(e.matrix[0][1], 1 / 30000, 1e-12), JSON.stringify(e.matrix));
+  const d = analyze(chain(e.matrix));
+  assert(d.absorbing.length === 0 && d.isIrreducible, `absorventes: ${d.absorbing}`);
+});
+t('tabela: mantém a precisão colada', () => {
+  const r = parseTable('0.123456 0.876544\n0.00001 0.99999');
+  assert(near(r.matrix[0][0], 0.123456, 1e-12) && near(r.matrix[1][0], 0.00001, 1e-12), JSON.stringify(r.matrix));
+});
+t('normalizar não arredonda', () => {
+  const row = normalizeRow([1, 1, 1], 0);
+  assert(vecNear(row, [1 / 3, 1 / 3, 1 / 3], 1e-12) && near(row.reduce((a, b) => a + b), 1, 1e-12), JSON.stringify(row));
+  assert(normalizeRow([0, 0], 1).join() === '0,1');
+});
+t('evento raro aparece na tela, não como zero', () => {
+  assert(fmtP(1 / 30000) === '0,000033', fmtP(1 / 30000));
+  assert(fmtP(1 / 30000, 'percent') === '0,0033%', fmtP(1 / 30000, 'percent'));
+  assert(fmtP(0.0001) === '0,0001', fmtP(0.0001));
+  assert(fmtP(1 - 1 / 30000) === '0,999967', fmtP(1 - 1 / 30000));
+  assert(fmtP(1 - 1 / 30000, 'percent') === '99,9967%', fmtP(1 - 1 / 30000, 'percent'));
+  assert(fmtP(0.1 + 0.2 + 0.7) === '1', fmtP(0.1 + 0.2 + 0.7));
+  assert(fmtP(0.25) === '0,25' && fmtP(0.25, 'percent') === '25%' && fmtP(0) === '0' && fmtP(1) === '1' && fmtP(1 / 3) === '0,333');
+});
+
+// ── histórico em tabela (CSV)
+const LONGO = 'cliente,mes,estado\n1,jan,Ativo\n1,fev,Ativo\n1,mar,Cancelou\n2,jan,Ativo\n2,fev,Pausado';
+t('CSV com colunas cliente, mês e estado', () => {
+  const h = readHistory(LONGO);
+  assert(h.table && h.header && h.format === 'long', JSON.stringify(h));
+  assert(h.sequences.map((s) => s.join('>')).join(' ') === 'Ativo>Ativo>Cancelou Ativo>Pausado', JSON.stringify(h.sequences));
+  const e = estimateChain(h.sequences);
+  assert(e.labels.join() === 'Ativo,Cancelou,Pausado' && e.merged.length === 0, e.labels.join());
+});
+t('CSV com colunas em outra ordem e coluna extra', () => {
+  const h = readHistory('estado;regiao;data;conta\nAtivo;SP;2024-01;a\nCancelou;SP;2024-02;a\nAtivo;RJ;2024-01;b');
+  assert(h.format === 'long' && h.state === 0 && h.time === 2 && h.id === 3, JSON.stringify(h));
+  assert(h.notes.some((n) => /regiao/.test(n)), h.notes.join());
+});
+t('CSV sem cabeçalho, com datas', () => {
+  const h = readHistory('u1,2024-01-01,Ativo\nu1,2024-02-01,Cancelou\nu2,2024-01-01,Ativo');
+  assert(!h.header && h.format === 'long' && h.id === 0 && h.time === 1 && h.state === 2, JSON.stringify(h));
+  assert(h.sequences[0].join() === 'Ativo,Cancelou');
+});
+t('CSV ordena pela data', () => {
+  const h = readHistory('id,data,status\n1,2024-03-01,C\n1,2024-01-01,A\n1,2024-02-01,B');
+  assert(h.sequences[0].join() === 'A,B,C', JSON.stringify(h.sequences));
+  const br = readHistory('id,data,status\n1,15/03/2024,C\n1,15/01/2024,A\n1,15/02/2024,B');
+  assert(br.sequences[0].join() === 'A,B,C', JSON.stringify(br.sequences));
+});
+t('mês sem ano mantém a ordem das linhas', () => {
+  const h = readHistory('id,mes,status\n1,dez,A\n1,jan,B');
+  assert(h.sequences[0].join() === 'A,B', JSON.stringify(h.sequences));
+  assert(h.notes.some((n) => /ordem das linhas/.test(n)), h.notes.join());
+  assert(timeKey('jan') === null && timeKey('jan/2024') < timeKey('fev/2024') && timeKey('12/2023') < timeKey('01/2024'));
+});
+t('coluna numérica sem repetição é a ordem, não quem é', () => {
+  const h = readHistory('1,A\n2,B\n3,A');
+  assert(h.format === 'long' && h.id === -1 && h.time === 0 && h.sequences[0].join() === 'A,B,A', JSON.stringify(h));
+});
+t('CSV com um estado por coluna e cabeçalho', () => {
+  const h = readHistory('jan,fev,mar\nAtivo,Ativo,Cancelou\nAtivo,Pausado,Ativo');
+  assert(h.header && h.format === 'sequences', JSON.stringify(h));
+  assert(h.sequences.length === 2 && h.sequences[0].join() === 'Ativo,Ativo,Cancelou');
+});
+t('CSV com coluna de identificação', () => {
+  const h = readHistory('cliente,jan,fev\n1,Ativo,Ativo\n2,Ativo,Cancelou');
+  assert(h.header && h.format === 'sequences' && h.skip === 0, JSON.stringify(h));
+  assert(h.sequences[1].join() === 'Ativo,Cancelou');
+});
+t('Excel: ponto e vírgula, marca BOM e aspas', () => {
+  const h = readHistory('\uFEFFcliente;mes;estado\n1;2024-01;"Em dia, sem atraso"\n1;2024-02;Atrasado');
+  assert(h.header && h.format === 'long', JSON.stringify(h));
+  assert(h.sequences[0].join('|') === 'Em dia, sem atraso|Atrasado', JSON.stringify(h.sequences));
+});
+t('quem usa o programa pode corrigir a leitura', () => {
+  const asSeq = readHistory(LONGO, { format: 'sequences', header: false, skip: -1 });
+  assert(asSeq.sequences.length === 6 && asSeq.sequences[0].join() === 'cliente,mes,estado', JSON.stringify(asSeq.sequences));
+  const other = readHistory('a,x,1\na,y,2', { format: 'long', header: false, id: 0, time: 2, state: 1 });
+  assert(other.sequences[0].join() === 'x,y', JSON.stringify(other));
+});
+t('sequências comuns continuam sendo sequências', () => {
+  const h = readHistory('Novo,Ativo,Cancelou\nNovo,Pausado,Cancelou\nOutros,Ativo,Cancelou');
+  assert(h.format === 'sequences' && !h.header && h.sequences.length === 3, JSON.stringify(h));
+  const pares = readHistory('Ativo,Cancelou\nAtivo,Ativo\nPausado,Ativo');
+  assert(pares.format === 'sequences' && pares.sequences.length === 3, JSON.stringify(pares));
+  const desiguais = readHistory('Ativo, Ativo, Pausado\nNovo, Cancelou');
+  assert(!desiguais.table && desiguais.sequences[1].join() === 'Novo,Cancelou');
+  assert(readHistory('sol sol chuva').sequences[0].length === 3 && readHistory('AABC').sequences[0].length === 4);
+});
+t('grafias diferentes são o mesmo estado', () => {
+  const e = estimateChain(parseSequences('ativo, Ativo, Ativo,  ATIVO, Cancelou'));
+  assert(e.labels.join() === 'Ativo,Cancelou', e.labels.join());
+  assert(e.counts[0][0] === 3 && e.respelled[0].variants.length === 3, JSON.stringify(e));
+});
+t('célula vazia não cria transição', () => {
+  assert(parseSequences('Ativo,,Cancelou').length === 2);
+  assert(parseSequences('Ativo\t\tCancelou').length === 2);
+  assert(parseSequences('Ativo,Ativo,,').length === 1);
+  const h = readHistory('Ativo,,Cancelou,Cancelou\nAtivo,Ativo,,Ativo');
+  assert(h.gaps === 2 && h.notes.some((n) => /2 células vazias/.test(n)), JSON.stringify(h));
+  assert(estimateChain(parseSequences('A,,B')).transitions === 0);
+  const longa = readHistory('id,data,status\n1,2024-01,A\n1,2024-02,\n1,2024-03,B');
+  assert(longa.gaps === 1 && estimateChain(longa.sequences).transitions === 0, JSON.stringify(longa));
+});
+t('tabela: nome composto no cabeçalho', () => {
+  const r = parseTable('Em dia, Atrasado\n0.5, 0.5\n0.2, 0.8');
+  assert(r.labels.join() === 'Em dia,Atrasado' && vecNear(r.matrix[1], [0.2, 0.8]), JSON.stringify(r));
+});
+t('tabela: nome composto nas duas direções', () => {
+  const r = parseTable('Em dia, Muito atrasado\nEm dia, 0.5, 0.5\nMuito atrasado, 0.2, 0.8');
+  assert(r.labels.join() === 'Em dia,Muito atrasado', JSON.stringify(r));
+  assert(parseTable('Em dia,Atrasado\nEm dia,1,3\nAtrasado,1,1').matrix[0][1] === 0.75);
+});
+t('tabela: vírgula decimal com vírgula separadora', () => {
+  assert(vecNear(parseTable('0,5, 0,5\n0,2, 0,8').matrix[1], [0.2, 0.8]));
+  assert(vecNear(parseTable('A B\nA 0,5 0,5\nB 0,2 0,8').matrix[1], [0.2, 0.8]));
+  assert(vecNear(parseTable('"0,5","0,5"\n"0,2","0,8"').matrix[1], [0.2, 0.8]));
+});
+t('tabela: número negativo vira erro, não cabeçalho', () => {
+  throws(() => parseTable('-0.5 1.5\n0.5 0.5'), /negativo/);
+  throws(() => parseTable('-0.5 1.5\n0.5 0.5\n0.2 0.8'), /quadrada/);
+  throws(() => parseTable('0.5 0.5\n-1 2'), /negativo/);
+});
+
+// ── desfazer e refazer
+t('desfazer e refazer andam nos dois sentidos', () => {
+  const h = new ChainHistory();
+  assert(!h.canUndo && !h.canRedo && h.undo('x') === null && h.redo('x') === null);
+  h.record('v1');
+  h.record('v2');
+  assert(h.undo('v3') === 'v2' && h.undo('v2') === 'v1' && !h.canUndo);
+  assert(h.redo('v1') === 'v2' && h.redo('v2') === 'v3' && !h.canRedo);
+});
+t('mudança nova apaga o refazer', () => {
+  const h = new ChainHistory();
+  h.record('v1');
+  h.undo('v2');
+  assert(h.canRedo);
+  h.record('v1b');
+  assert(!h.canRedo);
+});
+t('digitação seguida conta como um passo', () => {
+  let clock = 0;
+  const h = new ChainHistory({ coalesceMs: 800, now: () => clock });
+  h.record('a', 'cell:0:0');
+  clock = 100;
+  h.record('b', 'cell:0:0');
+  clock = 500;
+  h.record('c', 'cell:0:0');
+  assert(h.past.join() === 'a', h.past.join());
+  clock = 5000;
+  h.record('d', 'cell:0:0');
+  h.record('e', 'cell:0:1');
+  h.record('f');
+  h.record('g');
+  assert(h.past.join() === 'a,d,e,f,g', h.past.join());
+});
+t('histórico tem limite e pode ser restaurado', () => {
+  const h = new ChainHistory({ limit: 3 });
+  [1, 2, 3, 4, 5].forEach((v) => h.record(v));
+  assert(h.past.join() === '3,4,5');
+  h.restore([7, 8, 9, 10]);
+  assert(h.past.join() === '8,9,10' && !h.canRedo);
+});
+
+// ── link compartilhado
+t('link: ida e volta com acentos', () => {
+  const hash = encodeShare({ meta: { title: 'Previsão', unit: 'mês' }, states: [{ label: 'Avó' }, { label: 'São' }], matrix: [[0.5, 0.5], [1 / 30000, 1 - 1 / 30000]] });
+  assert(hash.startsWith('#m='));
+  const c = decodeShare(hash);
+  assert(c.meta.title === 'Previsão' && c.states[1].label === 'São' && near(c.matrix[1][0], 1 / 30000, 1e-15));
+});
+t('link corrompido é recusado', () => {
+  throws(() => decodeShare('#m=%%%'), /./);
+  throws(() => decodeShare(`#m=${btoa('{"states":[]}')}`), /states|matrix|estados/);
+});
+
+// ── quiz
+const quizOf = (a, b) => byId.memoryless.quiz({ d: { effective: [[a, 1 - a], [b, 1 - b]] }, v: { lab: (i) => ['Sol', 'Chuva'][i] } });
+t('quiz: alternativas sempre diferentes, com uma só certa', () => {
+  for (let a = 0; a <= 1.0001; a += 0.05) {
+    for (let b = 0; b <= 1.0001; b += 0.05) {
+      const { options } = quizOf(a, b);
+      const labels = options.map((o) => o.label);
+      assert(new Set(labels).size === 4, `a=${a} b=${b}: ${labels.join(' | ')}`);
+      const right = options.filter((o) => o.correct);
+      assert(right.length === 1 && right[0].label === pct(b), `a=${a} b=${b}: ${labels.join(' | ')}`);
+      assert(options.every((o) => o.correct || o.why), `a=${a} b=${b}: falta explicação`);
+    }
+  }
+});
+t('quiz: a resposta certa muda de lugar', () => {
+  const where = new Set();
+  for (let b = 0.1; b < 0.95; b += 0.1) where.add(quizOf(0.8, b).options.findIndex((o) => o.correct));
+  assert(where.size >= 2, [...where].join());
+  assert(quizOf(0.8, 0.4).options.map((o) => o.label).join() === quizOf(0.8, 0.4).options.map((o) => o.label).join(), 'a ordem precisa ser estável');
+});
+t('quiz: o erro mais comum continua entre as opções', () => {
+  const { options } = quizOf(0.8, 0.4);
+  assert(options.some((o) => o.label === pct(0.8)) && options.some((o) => o.label === pct(0.6)), options.map((o) => o.label).join());
+});
 
 // ── vocabulário e validação
 t('plural em português', () => {

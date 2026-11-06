@@ -13,10 +13,12 @@ Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do
 | Caminho | Quando usar | O que acontece |
 |---|---|---|
 | Descrever em palavras | Você tem uma ideia, mas não tem números | Um assistente pergunta o que muda, quais são as situações possíveis e as chances de cada uma |
-| Tenho dados | Você tem um histórico | Cole sequências ou abra um CSV: as chances saem da contagem de transições |
+| Tenho dados | Você tem um histórico | Cole sequências ou abra um CSV, com um estado por coluna ou com colunas como cliente, mês e estado. O app mostra como entendeu o arquivo e deixa corrigir; as chances saem da contagem de transições |
 | Colar uma tabela | Você já tem a matriz ou as contagens | Copie da planilha: nomes e normalização são tratados automaticamente |
 
 Ou comece por um dos 23 modelos da galeria: funil de vendas, vida de um assinante, inadimplência, caminho na faculdade, epidemia, PageRank, fila, ruína do jogador e outros. Os números da galeria são ilustrativos.
+
+**Voltar atrás.** Toda mudança no modelo pode ser desfeita com o botão **Desfazer** ou `Ctrl+Z` e refeita com `Ctrl+Y`, inclusive trocar de modelo. O histórico continua lá depois de recarregar a página. Se o assistente for fechado no meio, o que foi preenchido fica guardado até o modelo ser criado.
 
 **Entender enquanto usa.** Os balões aparecem conforme você mexe: ao errar a soma de uma linha, explicam por que ela precisa dar 1; ao criar um estado absorvente, explicam o que ele faz. Clique em qualquer pote ou seta para ver o que ela significa no seu modelo. O **Caderno de teoria** reúne 37 conceitos, e os balões podem ser desligados.
 
@@ -68,7 +70,7 @@ Não há etapa de build. No repositório, vá em **Settings → Pages**, escolha
 | Pasta | Conteúdo |
 |---|---|
 | `js/math/` | Motor sem dependências de interface: classificação da cadeia, π, absorção, tempos de chegada e estimativa a partir de dados |
-| `js/models/` | Validação de modelos importados e catálogo da galeria |
+| `js/models/` | Validação de modelos importados, catálogo da galeria, link compartilhável e histórico de desfazer |
 | `js/coach/` | Balões: catálogo de teoria (`tips.js`), quando cada um aparece (`triggers.js`) e exibição (`Coach.js`) |
 | `js/components/` | Diagrama (SVG e D3), bolinhas (Canvas), matriz, assistente, painéis e desafios |
 | `js/levels/`, `js/challenges/` | Conteúdo dos três níveis e dos desafios |
@@ -78,4 +80,7 @@ Bibliotecas, carregadas por CDN: [D3](https://d3js.org) para o diagrama e os gr�
 
 ## Testes
 
-Com o servidor rodando, abra http://localhost:5173/tests/math.test.html. A página testa o motor matemático, a leitura de dados, a validação de arquivos e todos os modelos da galeria.
+Com o servidor rodando, abra as duas páginas. O título da aba mostra `OK` ou `FALHOU`:
+
+- http://localhost:5173/tests/math.test.html testa o motor matemático, a leitura de dados, a validação de arquivos, o desfazer, o link compartilhado, o quiz e todos os modelos da galeria.
+- http://localhost:5173/tests/app.test.html abre o app numa janela e percorre os fluxos da interface: copiar e abrir links, desfazer, rascunho do assistente, importação de CSV e os textos do Diagnóstico. Leva menos de um minuto. Os dados salvos no navegador são guardados antes e recolocados no fim; deixe a aba em primeiro plano até terminar.

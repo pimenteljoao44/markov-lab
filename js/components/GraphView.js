@@ -78,8 +78,10 @@ export class GraphView {
         if (!ev.active) this.force.alphaTarget(0.25).restart();
         n.fx = n.x;
         n.fy = n.y;
+        n.dragged = false;
       })
       .on('drag', (ev, n) => {
+        n.dragged = true;
         n.fx = clamp(ev.x, R + 8, this.w - R - 8);
         n.fy = clamp(ev.y, R + 22, this.h - R - 64);
       })
@@ -88,7 +90,8 @@ export class GraphView {
         const x = this.ix(n.fx), y = this.iy(n.fy);
         n.fx = null;
         n.fy = null;
-        actions.moveState(n.i, x, y);
+        // Um clique para ler a explicação não muda o modelo nem gera passo de desfazer.
+        if (n.dragged) actions.moveState(n.i, x, y);
       });
 
     new ResizeObserver(() => this.resize()).observe(wrap);
