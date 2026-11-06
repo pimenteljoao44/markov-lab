@@ -1,0 +1,57 @@
+/* Balões de explicação e botões "?". */
+.balloon {
+  position: fixed; left: 0; top: 0; z-index: 40;
+  width: min(340px, calc(100vw - 20px));
+  background: #fff; color: var(--ink-2);
+  border: 1.5px solid var(--ink); border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 0 rgba(31, 42, 68, .2);
+  font-size: 13.5px; line-height: 1.45;
+}
+.balloon header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.b-title { margin: 0; font-family: var(--display); font-weight: 400; font-size: 16px; line-height: 1.2; color: var(--ink); overflow-wrap: anywhere; }
+.b-x { border: 0; background: transparent; color: var(--ink-3); cursor: pointer; font-size: 18px; line-height: 1; padding: 0 2px; }
+.b-x:hover { color: var(--ink); }
+.b-body p { margin: 4px 0 6px; }
+.b-body b, .b-body li b { color: var(--ink); }
+.b-body ol { margin: 4px 0; padding-left: 20px; }
+.b-body li { margin: 3px 0; }
+mark { background: var(--marker); color: var(--ink); padding: 0 3px; border-radius: 3px; }
+.b-list { list-style: none; margin: 4px 0 6px; padding: 0; }
+.b-list li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px dashed var(--line); margin: 0; }
+.b-math { margin-top: 4px; }
+.b-math summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--blue); }
+.b-math-body { padding-top: 4px; font-size: 13px; }
+.b-math-body p { margin: 4px 0; }
+.b-math-body .tex { display: block; overflow-x: auto; color: var(--ink); }
+.balloon footer { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.balloon footer .btn-primary { padding: 0 14px; }
+.b-skip { border: 0; background: transparent; padding: 0; cursor: pointer; font-size: 12.5px; color: var(--ink-3); text-decoration: underline; text-underline-offset: 2px; }
+.b-skip:hover { color: var(--ink); }
+
+/* A ponta do balão: um quadrado girado com duas bordas. */
+.b-tail { position: absolute; width: 12px; height: 12px; background: #fff; border: 0 solid var(--ink); transform: rotate(45deg); }
+.balloon[data-place="right"] .b-tail { left: -7.5px; margin-top: -6px; border-width: 0 0 1.5px 1.5px; }
+.balloon[data-place="left"] .b-tail { right: -7.5px; margin-top: -6px; border-width: 1.5px 1.5px 0 0; }
+.balloon[data-place="bottom"] .b-tail { top: -7.5px; margin-left: -6px; border-width: 1.5px 0 0 1.5px; }
+.balloon[data-place="top"] .b-tail { bottom: -7.5px; margin-left: -6px; border-width: 0 1.5px 1.5px 0; }
+.balloon[data-place="none"] .b-tail, .balloon[data-place="sheet"] .b-tail { display: none; }
+
+.coach-spot { outline: 3px solid var(--marker); outline-offset: 2px; border-radius: 6px; }
+
+.q {
+  position: relative;
+  display: inline-grid; place-items: center; vertical-align: middle; flex: none;
+  width: 17px; height: 17px; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--ink-3); background: #fff; color: var(--ink-2);
+  font: 700 11px/1 var(--body); cursor: help;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.q::after { content: ''; position: absolute; inset: -6px; }
+.q:hover, .q:focus-visible { background: var(--marker); border-color: var(--ink); color: var(--ink); }
+.q-inline { cursor: default; }
+.q-inline::after { display: none; }
+
+@media (max-width: 720px) {
+  .balloon { left: 10px !important; right: 10px; top: auto !important; bottom: 10px; width: auto; max-height: 55vh; overflow-y: auto; }
+}

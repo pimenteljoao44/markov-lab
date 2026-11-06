@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Testes do motor matemático</title>
+<style>
+  body { background:#f8fafd; color:#1f2a44; font:14px/1.6 ui-monospace, Consolas, monospace; padding:24px; }
+  .pass { color:#12a150 } .fail { color:#e5383b; font-weight:700 } h1 { font-size:16px }
+</style>
+</head>
+<body>
+<h1>Motor matemático: testes</h1>
+<pre id="out"></pre>
+<script type="module">
+import { analyze } from '../js/math/analyze.js';
+import { inverse, solve, evolve } from '../js/math/linalg.js';
+import { distributionAfter, hittingStats } from '../js/math/query.js';
+import { parseSequences, estimateChain, parseTable } from '../js/math/estimate.js';
+import { pluralPt, sanitizeMeta } from '../js/vocab.js';
+import { sanitizeChain } from '../js/models/chain.js';
+import { MODELS, buildModel } from '../js/models/catalog.js';
+
+const out = document.getElementById('out');
+let passed = 0, failed = 0;
+const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
+const vecNear = (a, b, tol = 1e-6) => a.length === b.length && a.every((v, i) => near(v, b[i], tol));
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function t(name, fn) {
+  try { fn(); passed++; out.innerHTML += `<span class="pass">✓ ${esc(name)}</span>\n`; }
+  catch (e) { failed++; out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`; }
+}
+function assert(c, msg = 'falhou') { if (!c) throw new Error(msg); }
+function throws(fn, re) {
+  try { fn(); } catch (e) { assert(re.test(e.message), `mensagem inesperada: ${e.message}`); return; }
+  throw new Error('deveria ter lançado erro');
+}
+const chain = (matrix) => ({ states: matrix.map((_, i) => ({ id: 's' + i, label: 'S' + i })), matrix });
+const RUINA = [[1,0,0,0,0],[0.5,0,0.5,0,0],[0,0.5,0,0.5,0],[0,0,0.5,0,0.5],[0,0,0,0,1]];
+
+// ── álgebra
+t('solve 2x2', () => assert(vecNear(solve([[2, 1], [1, 3]], [3, 5]), [0.8, 1.4])));
+t('inverse 2x2', () => assert(vecNear(inverse([[4, 7], [2, 6]]).flat(), [0.6, -0.7, -0.2, 0.4])));
+t('inverse singular → null', () => assert(inverse([[1, 2], [2, 4]]) === null));
+
+// ── análise
+t('2 estados: π = [2/3, 1/3], ergódica', () => {
+  const d = analyze(chain([[0.8, 0.2], [0.4, 0.6]]));
+  assert(vecNear(d.stationary, [2 / 3, 1 / 3]), JSON.stringify(d.stationary));
+  assert(d.isErgodic && d.isIrreducible && d.period === 1);
+  assert(d.absorbing.length === 0 && d.absorption === null);
+});
+t('πP = π para cadeia 3x3', () => {
+  const d = analyze(chain([[0.6, 0.3, 0.1], [0.3, 0.4, 0.3], [0.2, 0.4, 0.4]]));
+  assert(vecNear(evolve(d.stationary, d.effective), d.stationary));
+  assert(near(d.stationary.reduce((a, b) => a + b), 1));
+});
+t('ciclo de 3: período 3, não ergódica, π uniforme', () => {
+  const d = analyze(chain([[0, 1, 0], [0, 0, 1], [1, 0, 0]]));
+  assert(d.isIrreducible && d.period === 3 && !d.isErgodic);
+  assert(vecNear(d.stationary, [1 / 3, 1 / 3, 1 / 3]));
+  assert(d.isDoublyStochastic);
+});
+t('ruína do jogador: absorção e tempos', () => {
+  const d = analyze(chain(RUINA));
+  assert(d.absorbing.join() === '0,4');
+  assert(d.stationary === null && d.closedStationary.length === 2);
+  const a = d.absorption;
+  assert(a.transient.join() === '1,2,3');
+  assert(vecNear(a.B.map((r) => r[0]), [0.75, 0.5, 0.25]), JSON.stringify(a.B));
+  assert(vecNear(a.expectedSteps, [3, 4, 3]), JSON.stringify(a.expectedSteps));
+});
+t('redutível com 2 ilhas fechadas', () => {
+  const d = analyze(chain([[0.5, 0.5, 0, 0], [0.5, 0.5, 0, 0], [0, 0, 0.3, 0.7], [0, 0, 0.6, 0.4]]));
+  assert(!d.isIrreducible && d.classes.filter((c) => c.closed).length === 2);
+  assert(!d.reach[0][2]);
+});
+t('linha inválida → pesos normalizados', () => {
+  const d = analyze(chain([[0.6, 0.25], [0.4, 0.6]]));
+  assert(d.rowStatus[0] === 'under' && d.rowStatus[1] === 'ok' && !d.allRowsOk);
+  assert(near(d.effective[0][0], 0.6 / 0.85) && near(d.effective[0][1], 0.25 / 0.85));
+});
+t('linha zerada → estado sem saída', () => {
+  const d = analyze(chain([[0, 0], [0.5, 0.5]]));
+  assert(d.deadEnds.join() === '0' && d.absorbing.includes(0));
+});
+t('linha acima de 1 → over', () => assert(analyze(chain([[0.9, 0.3], [0, 1]])).rowStatus[0] === 'over'));
+
+// ── perguntas ao modelo
+t('distribuição depois de n passos', () => {
+  const P = [[0.8, 0.2], [0.4, 0.6]];
+  assert(vecNear(distributionAfter(P, 0, 0), [1, 0]));
+  assert(vecNear(distributionAfter(P, 0, 1), [0.8, 0.2]));
+  assert(vecNear(distributionAfter(P, 0, 2), [0.72, 0.28]));
+  assert(vecNear(distributionAfter(P, 1, 200), [2 / 3, 1 / 3], 1e-6));
+});
+t('tempo até chegar: 2 estados', () => {
+  const h = hittingStats([[0.8, 0.2], [0.4, 0.6]], 1);
+  assert(near(h.prob[0], 1) && near(h.mean[0], 5), JSON.stringify(h));
+});
+t('tempo de volta = 1/π (Kac)', () => {
+  const P = [[0.6, 0.3, 0.1], [0.3, 0.4, 0.3], [0.2, 0.4, 0.4]];
+  const pi = analyze(chain(P)).stationary;
+  P.forEach((_, i) => {
+    const h = hittingStats(P, i);
+    assert(near(h.returnProb, 1) && near(h.returnMean, 1 / pi[i]), `estado ${i}: ${h.returnMean} vs ${1 / pi[i]}`);
+  });
+});
+t('pode nunca chegar: ruína partindo de R$2', () => {
+  const h = hittingStats(RUINA, 4);
+  assert(near(h.prob[2], 0.5) && h.mean[2] === Infinity, JSON.stringify(h));
+  assert(h.prob[0] === 0);
+});
+t('chegada certa no absorvente único', () => {
+  const P = [[0.5, 0.5, 0], [0, 0.5, 0.5], [0, 0, 1]];
+  const h = hittingStats(P, 2);
+  assert(near(h.mean[0], 4) && near(h.mean[1], 2), JSON.stringify(h.mean));
+  assert(near(h.returnMean, 1));
+});
+t('estado transitório: volta incerta', () => {
+  const h = hittingStats([[0.5, 0.5], [0, 1]], 0);
+  assert(near(h.returnProb, 0.5) && h.returnMean === Infinity);
+});
+
+// ── estimar de dados
+t('sequência com separador', () => {
+  const s = parseSequences('Ativo, Ativo, Pausado\nA -> B -> C');
+  assert(s.length === 2 && s[0].join() === 'Ativo,Ativo,Pausado' && s[1].join() === 'A,B,C', JSON.stringify(s));
+});
+t('coluna de planilha vira uma sequência', () => {
+  const s = parseSequences('Ativo\nAtivo\nPausado');
+  assert(s.length === 1 && s[0].length === 3);
+});
+t('sequência compacta', () => assert(parseSequences('AABC')[0].join('') === 'AABC'));
+t('palavras separadas por espaço', () => assert(parseSequences('sol sol chuva')[0].length === 3));
+t('estimativa por contagem', () => {
+  const e = estimateChain(parseSequences('A A B A B B'));
+  assert(e.labels.join() === 'A,B' && e.transitions === 5);
+  assert(e.counts[0].join() === '1,2' && e.counts[1].join() === '1,1', JSON.stringify(e.counts));
+  assert(near(e.matrix[0][1], 0.6667, 1e-3) && near(e.matrix[1][0], 0.5));
+});
+t('estado sem saída é sinalizado', () => {
+  const e = estimateChain(parseSequences('A B C'));
+  assert(e.noExit.join() === 'C' && e.matrix[2][2] === 1);
+});
+t('estados demais viram "Outros"', () => {
+  const seq = 'a a a b b c d e f'.split(' ');
+  const e = estimateChain([seq], { maxStates: 3 });
+  assert(e.labels.length === 3 && e.labels.includes('Outros') && e.merged.length === 4, JSON.stringify(e.labels));
+  assert(near(e.matrix.flat().reduce((a, b) => a + b), 3));
+});
+t('tabela com nomes (planilha)', () => {
+  const r = parseTable('\tA\tB\nA\t0,5\t0,5\nB\t10\t30');
+  assert(r.labels.join() === 'A,B' && r.wasNormalized);
+  assert(vecNear(r.matrix[1], [0.25, 0.75]), JSON.stringify(r.matrix));
+});
+t('tabela só com números e vírgula decimal', () => {
+  const r = parseTable('0,5 0,5\n0,2 0,8');
+  assert(r.labels[0] === 'Estado 1' && vecNear(r.matrix[1], [0.2, 0.8]) && !r.wasNormalized, JSON.stringify(r));
+});
+t('tabela CSV com ponto decimal', () => assert(vecNear(parseTable('0.5,0.5\n0.2,0.8').matrix[0], [0.5, 0.5])));
+t('tabela não quadrada explica o erro', () => throws(() => parseTable('1 2 3\n4 5 6'), /quadrada/));
+
+// ── vocabulário e validação
+t('plural em português', () => {
+  const cases = { mês: 'meses', cliente: 'clientes', 'peão': 'peões', homem: 'homens', animal: 'animais', mulher: 'mulheres', rodada: 'rodadas', ano: 'anos' };
+  for (const [a, b] of Object.entries(cases)) assert(pluralPt(a) === b, `${a} → ${pluralPt(a)}`);
+});
+t('metadados têm valores padrão', () => {
+  const m = sanitizeMeta({});
+  assert(m.unit === 'bolinha' && m.steps === 'passos' && m.custom === false);
+  assert(sanitizeMeta({ step: 'mês' }).steps === 'meses');
+});
+t('importação rejeita matriz inválida', () => {
+  throws(() => sanitizeChain({ states: [{}, {}], matrix: [[1]] }), /2 linhas/);
+  throws(() => sanitizeChain({}), /states/);
+});
+t('importação descarta tipos errados', () => {
+  const c = sanitizeChain({ states: [{ label: 'A', color: 'red' }, { label: 'B', x: 9 }], matrix: [[-1, 'x'], [0.5, 0.5]], meta: { title: 5, custom: 'sim' } });
+  assert(c.matrix[0].join() === '0,0' && /^#/.test(c.states[0].color) && c.meta.title === 'Modelo sem nome' && c.meta.custom === false);
+});
+
+// ── catálogo
+t('todo modelo do catálogo é válido', () => {
+  const ids = new Set();
+  for (const m of MODELS) {
+    assert(!ids.has(m.id), `id repetido: ${m.id}`);
+    ids.add(m.id);
+    const c = buildModel(m.id);
+    const d = analyze(c);
+    assert(d.allRowsOk, `${m.id}: linha não soma 1 (${d.rowSums.join(' ')})`);
+    assert(c.states.length === m.labels.length && m.matrix.length === m.labels.length, `${m.id}: tamanho`);
+    assert(m.question && m.blurb, `${m.id}: texto faltando`);
+    if (m.levels.includes(1)) assert(c.states.length === 2, `${m.id}: nível 1 usa 2 estados`);
+    if (m.levels.includes(2)) assert(c.states.length === 3, `${m.id}: nível 2 usa 3 estados`);
+  }
+});
+
+out.innerHTML += `\n<b class="${failed ? 'fail' : 'pass'}">${passed} passaram, ${failed} falharam</b>`;
+document.title = failed ? `FALHOU (${failed})` : `OK (${passed})`;
+</script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Laboratório de Markov: modele qualquer problema</title>
+  <meta name="description" content="Caderno interativo para aprender e usar cadeias de Markov: modele o seu problema, simule, veja o equilíbrio e pergunte ao modelo.">
+  <meta property="og:title" content="Laboratório de Markov">
+  <meta property="og:description" content="Modele qualquer problema com cadeias de Markov, com balões que explicam a teoria enquanto você usa.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/coach.css">
+  <link rel="stylesheet" href="css/studio.css">
+  <link rel="stylesheet" href="css/animations.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Laboratório de Markov</h1>
+        <p>o futuro só depende do presente</p>
+      </div>
+      <nav id="story-nav" class="tabs" aria-label="Níveis"></nav>
+      <div class="top-actions">
+        <span class="xp" id="xp"></span>
+        <button class="text-btn" id="btn-notebook" title="Tudo que os balões explicam, em um lugar só">Caderno de teoria <span class="nb-count" id="nb-count"></span></button>
+        <label class="switch" title="Liga ou desliga as explicações automáticas. Os botões ? continuam funcionando."><input type="checkbox" id="coach-toggle"><span>Balões</span></label>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="stage">
+        <div class="model-bar">
+          <div class="mb-info">
+            <h2 id="model-title"></h2>
+            <p id="model-sub"></p>
+          </div>
+          <div class="mb-actions">
+            <button class="btn btn-sm" id="btn-gallery">Trocar modelo</button>
+            <button class="btn btn-sm btn-marker" id="btn-wizard">Modelar meu problema</button>
+            <details class="menu" id="file-menu">
+              <summary class="btn btn-sm btn-quiet">Arquivo</summary>
+              <div class="menu-pop">
+                <button type="button" id="btn-share">Copiar link deste modelo</button>
+                <button type="button" id="btn-export">Exportar arquivo</button>
+                <button type="button" id="btn-import">Importar arquivo</button>
+              </div>
+            </details>
+            <input type="file" id="file-import" accept="application/json,.json" hidden>
+          </div>
+        </div>
+        <div class="lesson" id="story-card"></div>
+        <div class="graph-wrap" id="graph-wrap">
+          <svg id="graph" role="group" aria-label="Diagrama da cadeia de Markov"></svg>
+          <canvas id="particles" aria-hidden="true"></canvas>
+          <div class="key" aria-label="Como ler o diagrama">
+            <span><svg width="24" height="10" aria-hidden="true"><path d="M1 2h22" stroke="currentColor" stroke-width="1.5"/><path d="M1 7h22" stroke="currentColor" stroke-width="4"/></svg>seta grossa = mais provável</span>
+            <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="#fff" stroke="currentColor" stroke-width="1.5"/><path d="M1.6 9h10.8A6 6 0 0 1 1.6 9z" fill="currentColor" opacity=".45"/></svg>nível = fração <button type="button" class="q" data-tip="jar" aria-label="Explicar o nível do pote">?</button></span>
+            <span><svg width="20" height="10" aria-hidden="true"><path d="M1 5h18" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/></svg>tracejado = equilíbrio <button type="button" class="q" data-tip="pi" aria-label="Explicar o equilíbrio">?</button></span>
+            <span class="key-hint">clique num pote ou numa seta para entender</span>
+          </div>
+        </div>
+        <div class="simbar" id="simbar"></div>
+      </section>
+
+      <aside class="side" aria-label="Painéis do modelo">
+        <section class="card" id="panel-matrix"></section>
+        <section class="card" id="panel-convergence"></section>
+        <section class="card" id="panel-ask"></section>
+        <section class="card" id="panel-insights"></section>
+      </aside>
+    </main>
+
+    <footer class="dock" id="challenge-dock"></footer>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <noscript><p style="padding:24px">O Laboratório de Markov precisa de JavaScript para funcionar.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

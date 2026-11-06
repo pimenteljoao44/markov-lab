@@ -1,0 +1,4 @@
+# Guarda LF no repositório e deixa o Git ajustar o fim de linha ao checar os arquivos.
+* text=auto
+*.jpg binary
+*.woff2 binary

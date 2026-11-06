@@ -1,0 +1,35 @@
+/* Caderno de laboratório: papel quadriculado, tinta azul-marinho,
+   marca-texto amarelo para destaque e caneta vermelha para correções. */
+:root {
+  --page: #e3ebf4;        /* mesa azulada */
+  --stage: #f8fafd;       /* folha quadriculada */
+  --grid: #e1e9f3;
+  --grid-major: #cfdcec;
+  --card: #ffffff;
+
+  --ink: #1f2a44;         /* tinta */
+  --ink-2: #4c5873;
+  --ink-3: #848fa5;
+  --line: #c9d4e3;
+  --line-soft: #e4eaf2;
+
+  --marker: #ffe45c;      /* marca-texto */
+  --marker-soft: #fff6c4;
+  --pen: #e5383b;         /* caneta vermelha */
+  --pen-soft: #fde8e8;
+  --ok: #12a150;
+  --ok-soft: #e3f6ec;
+  --blue: #2f6bff;
+
+  --lv1: #f29e1f;
+  --lv2: #7a5af8;
+  --lv3: #13a87b;
+
+  --display: 'Alfa Slab One', 'Rockwell', 'Roboto Slab', Georgia, serif;
+  --body: 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', system-ui, sans-serif;
+  --mono: 'Atkinson Hyperlegible Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --r: 12px;
+  --r-sm: 8px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
