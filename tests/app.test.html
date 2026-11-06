@@ -42,7 +42,40 @@ const win = () => frame.contentWindow;
 const doc = () => frame.contentDocument;
 const $ = (sel) => doc().querySelector(sel);
 const $$ = (sel) => [...doc().querySelectorAll(sel)];
-const ready = () => until(() => $('#model-title')?.textContent, 'o app abrir', 15000);
+
+/**
+ * Com a janela sem foco, o navegador troca o elemento ativo, mas não dispara os eventos de foco.
+ * Nesse caso o teste dispara os mesmos eventos, para o resultado não depender de onde a pessoa clicou.
+ */
+function emulateFocusEvents() {
+  const w = win();
+  for (const proto of [w.HTMLElement.prototype, w.SVGElement.prototype]) {
+    const nativeFocus = proto.focus;
+    proto.focus = function (...args) {
+      const before = doc().activeElement;
+      let fired = false;
+      const mark = () => {
+        fired = true;
+      };
+      this.addEventListener('focus', mark, { once: true });
+      nativeFocus.apply(this, args);
+      this.removeEventListener('focus', mark);
+      if (fired || before === this || doc().activeElement !== this) return;
+      const send = (el, type, bubbles, relatedTarget) => el.dispatchEvent(new w.FocusEvent(type, { bubbles, relatedTarget }));
+      if (before && before !== doc().body) {
+        send(before, 'blur', false, this);
+        send(before, 'focusout', true, this);
+      }
+      send(this, 'focus', false, before);
+      send(this, 'focusin', true, before);
+    };
+  }
+}
+
+async function ready() {
+  await until(() => $('#model-title')?.textContent, 'o app abrir', 15000);
+  emulateFocusEvents();
+}
 
 const twoStates = (a, b) => ({ meta: { title: `${a} e ${b}`, unit: 'cliente', step: 'mês' }, states: [{ id: 'a', label: a }, { id: 'b', label: b }], matrix: [[0.5, 0.5], [0.5, 0.5]] });
 const threeStates = (matrix) => ({ meta: { title: 'Três', unit: 'cliente', step: 'mês' }, states: ['A', 'B', 'C'].map((label, i) => ({ id: `s${i}`, label })), matrix });
@@ -759,6 +792,9 @@ const TESTS = [
   }],
   ['celular: o balão não cobre o pote que explica', async () => {
     await boot({ width: 375, height: 812, coach: true, storage: { level: 1 } });
+    // A rolagem suave quase não anda com a janela em segundo plano: o que importa aqui é a posição final.
+    const nativeScrollBy = win().scrollBy.bind(win());
+    win().scrollBy = ({ top }) => nativeScrollBy({ top, behavior: 'instant' });
     const balloon = await until(() => { const b = $('.balloon'); return !b.hidden && b; }, 'o primeiro balão', 6000);
     same(balloon.dataset.place, 'sheet', 'formato de celular');
     await until(() => {
