@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- A página só carrega o que é dela. É o navegador que garante, não só os testes. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Do Markov ao LLM: como um modelo escolhe a próxima palavra</title>
   <meta name="description" content="Treine um modelo de linguagem contando palavras e veja temperatura, top-k e top-p mudarem o sorteio do próximo token.">
+  <script src="js/boot.js"></script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="vendor/fonts/fonts.css">
   <link rel="stylesheet" href="vendor/katex/katex.min.css">
@@ -67,21 +70,6 @@
   </div>
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <noscript><p style="padding:24px">Este laboratório precisa de JavaScript para funcionar.</p></noscript>
-  <script>
-    // Se os módulos não carregarem, sobraria só a moldura com botões que não respondem: melhor dizer o que houve.
-    function bootFailed() {
-      if (document.documentElement.dataset.ready || document.getElementById('boot-error')) return;
-      var box = document.createElement('div');
-      box.id = 'boot-error';
-      box.className = 'boot-error';
-      box.setAttribute('role', 'alert');
-      box.innerHTML = location.protocol === 'file:'
-        ? '<b>Este caderno precisa de um servidor local.</b> Abrir o arquivo com dois cliques não funciona. Veja “Como rodar” no README.'
-        : '<b>Não foi possível carregar o laboratório.</b> Recarregue a página com Ctrl+Shift+R. Se o problema continuar, confira sua conexão.';
-      document.body.appendChild(box);
-    }
-    window.addEventListener('error', bootFailed);
-  </script>
-  <script type="module" src="js/llm/main.js" onerror="bootFailed()"></script>
+  <script type="module" src="js/llm/main.js"></script>
 </body>
 </html>

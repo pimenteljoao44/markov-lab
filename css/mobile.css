@@ -34,6 +34,9 @@
   .cs-video { flex-wrap: wrap; }
   .cs-link { margin-left: 40px; align-self: auto; }
 
+  /* O título da lição quebra a linha em vez de sair pela borda. */
+  .lesson h2 { white-space: normal; }
+
   /* As abas dividem a largura: em telas de 320 px, elas passariam da borda. */
   .tabs { gap: 2px; }
   .tab { flex: 1 1 0; min-width: 0; justify-content: center; gap: 5px; padding: 7px 6px 8px; }

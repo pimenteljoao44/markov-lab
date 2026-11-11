@@ -18,6 +18,7 @@ import { ChallengeDock } from './components/ChallengeDock.js';
 import { StoryNav } from './components/StoryNav.js';
 import { ModelStudio } from './components/ModelStudio.js';
 import { Notebook } from './components/Notebook.js';
+import { SideNav } from './platform/SideNav.js';
 import { CoursePanel } from './components/CoursePanel.js';
 import { buildModel } from './models/catalog.js';
 import { toast, undoToast, dismissActionToasts } from './components/Toast.js';
@@ -122,6 +123,16 @@ new MatrixEditor($('panel-matrix'));
 new ConvergenceChart($('panel-convergence'));
 new AskPanel($('panel-ask'));
 new InsightPanel($('panel-insights'));
+// Vem depois dos painéis: quando o nível muda, eles já decidiram quem aparece.
+const sideNav = new SideNav(document.querySelector('.side'), [
+  { id: 'panel-matrix', label: () => (getState().meta.level === 1 ? 'Regras' : 'Matriz') },
+  { id: 'panel-convergence', label: 'Gráfico' },
+  { id: 'panel-ask', label: 'Perguntar' },
+  { id: 'panel-insights', label: 'Diagnóstico' },
+]);
+subscribe((s, t) => {
+  if (t.has('level')) sideNav.refresh();
+});
 new ChallengeDock($('challenge-dock'), {
   onComplete() {
     const s = getState();

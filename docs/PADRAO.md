@@ -19,6 +19,7 @@ Se um conteúdo novo não cabe nessa forma, ele ainda não está pronto para ent
 |---|---|
 | Sem etapa de build, sem dependência instalada. Módulos ES servidos por qualquer servidor estático. | O projeto tem que abrir daqui a cinco anos, e no GitHub Pages, sem manutenção. |
 | A página não fala com outro site. Bibliotecas e fontes ficam em `vendor/`. A única exceção é o vídeo do YouTube, pedido só depois do clique. | Nada do que a pessoa digita ou cola pode sair do computador dela. Os testes de fluxo conferem isso. |
+| Cada página traz uma política de segurança de conteúdo (`Content-Security-Policy`) que só deixa carregar o que é dela. Por isso não há script embutido no HTML nem atributo `on...=`: script vai em arquivo, evento vai em `addEventListener`. | A regra de cima deixa de depender só dos testes: é o navegador que barra o que vier de fora, inclusive se um texto colado escapar da validação. |
 | Tudo que vem de fora (arquivo, link, texto colado, `localStorage`) é validado ao entrar e escapado ao ir para a tela (`escapeHtml`). | Salvamento corrompido ou texto com marcação não pode quebrar nem injetar nada na página. |
 | Nenhum dado de empresa, pessoa ou cliente no repositório. Exemplos falam de "uma indústria com ERP". | O site é público. Há um teste que falha se um nome de empresa entrar no conteúdo. |
 | O motor de cada laboratório é função pura, sem tocar na tela, e tem teste. | É o que permite confiar no número que aparece para quem está aprendendo. |
@@ -88,7 +89,7 @@ O `success` de cada desafio é onde a lição fica escrita: diz o que a pessoa a
 
 1. Escreva o motor e os testes dele em `tests/platform.test.html`. Só siga quando os números baterem com a conta feita à mão.
 2. Crie `js/<nome>/state.js`, os desafios e o caderno.
-3. Crie `<nome>.html` copiando a moldura de `llm.html` (cabeçalho, folha, fichas, dock, aviso de falha ao carregar) e `css/<nome>.css` só com o que for próprio.
+3. Crie `<nome>.html` copiando a moldura de `llm.html` (política de segurança, `js/boot.js`, cabeçalho, folha, fichas, dock) e ligue o índice dos painéis laterais com `js/platform/SideNav.js` e `css/<nome>.css` só com o que for próprio.
 4. Registre em `js/platform/labs.js`: `href`, as chaves de `localStorage` e de onde vem o progresso. O item correspondente já existe em `syllabus.js` como planejado.
 5. Escreva os testes de fluxo em `tests/pages.test.html`: abre, não fala com outro site, sobrevive a recarregar, sobrevive a salvamento corrompido, cabe no celular, todo controle tem nome.
 6. Rode `python tests/run.py`.

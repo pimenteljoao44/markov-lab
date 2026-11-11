@@ -452,6 +452,18 @@ t('plural em português', () => {
   const cases = { mês: 'meses', cliente: 'clientes', 'peão': 'peões', homem: 'homens', animal: 'animais', mulher: 'mulheres', rodada: 'rodadas', ano: 'anos' };
   for (const [a, b] of Object.entries(cases)) assert(pluralPt(a) === b, `${a} → ${pluralPt(a)}`);
 });
+t('plural: exceções, acentos e nomes compostos', () => {
+  const cases = {
+    mão: 'mãos', pão: 'pães', cidadão: 'cidadãos', produção: 'produções',
+    país: 'países', gás: 'gases', freguês: 'fregueses',
+    papel: 'papéis', nível: 'níveis', sol: 'sóis', funil: 'funis', útil: 'úteis', azul: 'azuis',
+    ônibus: 'ônibus', tórax: 'tórax', usuário: 'usuários', Cliente: 'Clientes',
+    'cliente ativo': 'clientes ativos', 'dia útil': 'dias úteis', 'nota fiscal': 'notas fiscais',
+    'ordem de produção': 'ordens de produção', 'pedido em aberto': 'pedidos em aberto',
+  };
+  for (const [a, b] of Object.entries(cases)) assert(pluralPt(a) === b, `${a} → ${pluralPt(a)}`);
+  assert(pluralPt('  ') === '' && pluralPt('') === '', 'vazio continua vazio');
+});
 t('metadados têm valores padrão', () => {
   const m = sanitizeMeta({});
   assert(m.unit === 'bolinha' && m.steps === 'passos' && m.custom === false);

@@ -16,6 +16,7 @@
 <div id="stage"></div>
 <script type="module">
 import { encodeShare, decodeShare } from '../js/models/share.js';
+import { externalRequests } from './hooks/external.js';
 
 const KEY = 'markovlab:v3';
 const COACH = 'markovlab:coach';
@@ -122,7 +123,17 @@ async function reload() {
   await ready();
 }
 
-const app = () => win().eval(`import(${JSON.stringify(`${BASE}js/store.js`)})`);
+/** O store da página. A política de segurança não deixa usar eval, então um módulo de teste o expõe. */
+async function app() {
+  if (!win().__store) {
+    const hook = doc().createElement('script');
+    hook.type = 'module';
+    hook.src = `${BASE}tests/hooks/store.js`;
+    doc().head.appendChild(hook);
+    await until(() => win().__store, 'o store da página');
+  }
+  return win().__store;
+}
 const labels = () => $$('.head-in').map((i) => i.value);
 const saved = () => JSON.parse(localStorage.getItem(KEY));
 
@@ -576,6 +587,39 @@ const TESTS = [
     assert(/concluído/.test($('.ch-tag').textContent), 'a resposta certa conclui');
   }],
 
+  // ── Índice dos painéis
+  ['índice dos painéis leva ao Diagnóstico e acompanha o nível', async () => {
+    await boot();
+    const names = () => $$('.side-nav [data-panel]').map((b) => b.textContent).join();
+    same(names(), 'Matriz,Gráfico,Perguntar,Diagnóstico', 'painéis no Sandbox');
+    // A rolagem suave quase não anda com a janela em segundo plano: o que importa aqui é onde ela termina.
+    const native = win().Element.prototype.scrollIntoView;
+    win().Element.prototype.scrollIntoView = function (options) {
+      native.call(this, { ...options, behavior: 'instant' });
+    };
+    $('[data-panel="panel-insights"]').click();
+    same(doc().activeElement, $('#panel-insights'), 'foco no painel');
+    const gap = $('#panel-insights').getBoundingClientRect().top - $('.side-nav').getBoundingClientRect().bottom;
+    assert(gap > -2 && gap < 60, `o painel fica logo abaixo do índice (${Math.round(gap)})`);
+    await until(() => $('[data-panel="panel-insights"]').getAttribute('aria-current') === 'true', 'o índice marcar o painel à vista');
+    $('[data-level="1"]').click();
+    same(names(), 'Regras,Gráfico,Diagnóstico', 'no nível 1 não há Perguntar, e a matriz se chama Regras');
+  }],
+  ['desafio de achar o equilíbrio não entrega π em lugar nenhum', async () => {
+    const ergodic = threeStates([[0.5, 0.5, 0], [0.25, 0.5, 0.25], [0, 0.5, 0.5]]);
+    await boot({ storage: { level: 3, completed: ['own-model'], chains: { 3: ergodic } } });
+    assert(/Ache o equilíbrio/.test($('.ch-title').textContent), $('.ch-title').textContent);
+    const box = $('#panel-insights .pi-hidden');
+    assert(box, 'π escondida');
+    assert([...box.querySelectorAll('.pi-row')].every((row) => !row.title), 'a dica do mouse não mostra o tempo de volta');
+    assert([...box.querySelectorAll('.pi-fill')].every((bar) => parseFloat(bar.style.width) === 0), 'a barra não mostra o tamanho');
+    assert(!/0,25|0,5/.test(box.textContent), box.textContent);
+    assert($$('g.node .pi-val').every((t) => !t.textContent), 'o diagrama também não mostra');
+    box.querySelector('[data-reveal]').click();
+    const row = $('#panel-insights .pi-row');
+    assert(/Tempo médio para voltar/.test(row.title) && parseFloat(row.querySelector('.pi-fill').style.width) > 0, 'revelar mostra tudo');
+  }],
+
   // ── Aulas
   ['aulas: abrir a trilha não pede nada ao YouTube', async () => {
     await boot();
@@ -584,7 +628,7 @@ const TESTS = [
     assert(d.open, 'a janela abre');
     same(d.querySelectorAll('.cs-stage').length, 7, 'etapas');
     assert(!d.querySelector('iframe'), 'sem vídeo antes do clique');
-    const external = win().performance.getEntriesByType('resource').map((r) => r.name).filter((u) => new URL(u).origin !== win().location.origin);
+    const external = await externalRequests(win(), BASE, 'markov.html');
     same(external.length, 0, `pedidos externos (${external.join(', ')})`);
     const link = d.querySelector('.cs-link');
     same(link.target, '_blank', 'o link abre em outra aba');
@@ -669,7 +713,7 @@ const TESTS = [
     await boot();
     await until(() => $('.katex'), 'as fórmulas aparecerem');
     await doc().fonts.ready;
-    const external = win().performance.getEntriesByType('resource').map((r) => r.name).filter((u) => new URL(u).origin !== win().location.origin);
+    const external = await externalRequests(win(), BASE, 'markov.html');
     same(external.length, 0, `pedidos externos (${external.join(', ')})`);
     assert($$('g.node').length > 0, 'o diagrama precisa aparecer');
     for (const family of ['Alfa Slab One', 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible Mono', 'KaTeX_Main']) {
@@ -687,8 +731,7 @@ const TESTS = [
   }],
   ['erro ao iniciar mostra a mesma mensagem', async () => {
     const html = await (await fetch(`${BASE}markov.html`)).text();
-    const broken = encodeURIComponent('throw new Error("falha simulada ao iniciar");');
-    await bootHtml(html.replace('src="js/main.js"', `src="data:text/javascript,${broken}"`));
+    await bootHtml(html.replace('src="js/main.js"', 'src="tests/hooks/throws.js"'));
     await until(() => $('#boot-error'), 'a mensagem');
   }],
 

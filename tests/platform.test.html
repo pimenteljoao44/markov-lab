@@ -15,7 +15,7 @@
 import { createStore } from '../js/platform/tinyStore.js';
 import { PHASES, KINDS, allItems } from '../js/platform/syllabus.js';
 import { LABS } from '../js/platform/labs.js';
-import { TRAIL_KEY, MIN_EXPLAIN, loadTrail, saveTrail, labProgress, itemProgress, phaseProgress, overallProgress, nextStep, exportAll, importAll } from '../js/platform/progress.js';
+import { TRAIL_KEY, MIN_EXPLAIN, loadTrail, saveTrail, labProgress, itemProgress, phaseProgress, overallProgress, nextStep, exportAll, importAll, notesMarkdown } from '../js/platform/progress.js';
 import { tokenize, train, nextCounts, windowOf, contextsSeen, copiedFraction, BOS, EOS, MAX_ORDER } from '../js/llm/ngram.js';
 import { distribution, entropy, effectiveChoices, sample, step, generate } from '../js/llm/sampling.js';
 import { CORPORA, DEFAULT_CORPUS, CUSTOM_CORPUS } from '../js/llm/corpus.js';
@@ -587,6 +587,20 @@ t('cópia: recusa arquivo de outro tipo e ignora chave estranha', () => {
   const to = memory();
   importAll({ format: 'caderno-ia', data: { [TRAIL_KEY]: '{"checks":[]}', 'chave-alheia': '{"x":1}', [LLM_KEY]: 5 } }, to);
   same(to.size(), 1, 'só a chave conhecida e válida entra');
+});
+t('explicações: saem como um documento, na ordem da trilha, só com o que foi escrito', () => {
+  const trail = loadTrail(memory());
+  same(notesMarkdown(trail), '', 'sem nada escrito não há documento');
+  trail.notes['explica-mecanica'] = '  Porque ele sorteia o próximo token.  ';
+  trail.notes['explica-processos'] = 'Vinte sorteios é pouco.';
+  trail.notes['explica-vetores'] = '   ';
+  trail.notes['id-que-nao-existe'] = 'fica de fora';
+  const text = notesMarkdown(trail);
+  assert(text.startsWith('# Caderno de IA aplicada: minhas explicações\n'), text.slice(0, 60));
+  assert(text.indexOf('## Fase 0') > 0 && text.indexOf('## Fase 0') < text.indexOf('## Fase 1'), 'fases na ordem da trilha');
+  assert(text.includes('### Probabilidade e processos') && text.includes('Vinte sorteios é pouco.'), 'módulo e resposta');
+  assert(text.includes(`**${item('explica-mecanica').title}**\n\nPorque ele sorteia o próximo token.`), 'pergunta e resposta, sem espaços nas pontas');
+  assert(!text.includes('### Vetores e similaridade') && !text.includes('fica de fora') && !text.includes('## Fase 2'), 'nada vazio nem desconhecido');
 });
 
 for (const run of pending) await run();

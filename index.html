@@ -1,18 +1,16 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-model-links="markov.html">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- A página só carrega o que é dela. É o navegador que garante, não só os testes. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Caderno de IA aplicada: da cadeia de Markov ao agente governado</title>
   <meta name="description" content="Trilha de estudo de IA com laboratórios interativos: entender na teoria, provar na prática e levar para um problema real.">
   <meta property="og:title" content="Caderno de IA aplicada">
   <meta property="og:description" content="Trilha de estudo de IA com laboratórios interativos, do processo aleatório ao agente governado.">
   <meta property="og:type" content="website">
-  <script>
-    // Links de modelo compartilhados antes de a trilha existir apontam para esta página:
-    // eles seguem para o Laboratório de Markov, que é quem sabe abri-los.
-    if (location.hash.indexOf('#m=') === 0) location.replace('markov.html' + location.hash);
-  </script>
+  <script src="js/boot.js"></script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="vendor/fonts/fonts.css">
   <link rel="stylesheet" href="css/tokens.css">
@@ -42,6 +40,7 @@
         <header class="trail-intro">
           <h2 id="trail-title">Da cadeia de Markov ao agente governado</h2>
           <p>Cinco fases. Cada módulo parte de um problema de trabalho, passa por um laboratório ou por algo que você constrói, e termina com você explicando o assunto por escrito.</p>
+          <p class="trail-tools" id="trail-tools"><button type="button" class="text-btn" data-all>Abrir todas as fases</button></p>
         </header>
         <ol class="phases" id="phases"></ol>
       </section>
@@ -50,21 +49,6 @@
   </div>
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <noscript><p style="padding:24px">Este caderno precisa de JavaScript para funcionar.</p></noscript>
-  <script>
-    // Se os módulos não carregarem, sobraria só a moldura vazia: melhor dizer o que houve.
-    function bootFailed() {
-      if (document.documentElement.dataset.ready || document.getElementById('boot-error')) return;
-      var box = document.createElement('div');
-      box.id = 'boot-error';
-      box.className = 'boot-error';
-      box.setAttribute('role', 'alert');
-      box.innerHTML = location.protocol === 'file:'
-        ? '<b>Este caderno precisa de um servidor local.</b> Abrir o arquivo com dois cliques não funciona. Veja “Como rodar” no README.'
-        : '<b>Não foi possível carregar o caderno.</b> Recarregue a página com Ctrl+Shift+R. Se o problema continuar, confira sua conexão.';
-      document.body.appendChild(box);
-    }
-    window.addEventListener('error', bootFailed);
-  </script>
-  <script type="module" src="js/trilha.js" onerror="bootFailed()"></script>
+  <script type="module" src="js/trilha.js"></script>
 </body>
 </html>

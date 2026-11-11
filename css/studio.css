@@ -23,7 +23,7 @@ dialog.editor { width: min(520px, calc(100vw - 24px)); }
 
 .field {
   width: 100%; min-height: 34px; padding: 5px 9px; background: #fff;
-  border: 1.5px solid var(--line); border-radius: 8px; font-size: 14px;
+  border: 1.5px solid var(--field-line); border-radius: 8px; font-size: 14px;
 }
 .field::placeholder { color: var(--ink-3); opacity: 1; }
 .field:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 2px rgba(47, 107, 255, .2); }

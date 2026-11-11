@@ -57,6 +57,18 @@ def serve(reports):
             self.send_header("Cache-Control", "no-store")
             super().end_headers()
 
+        def do_GET(self):
+            # /__raw/<arquivo> entrega o arquivo como texto puro. Programas que alteram páginas a caminho
+            # do navegador (um antivírus, por exemplo) só mexem em HTML: assim os testes conseguem ver a
+            # página como está no repositório e descontar o que foi injetado no caminho.
+            self.raw = self.path.startswith("/__raw/")
+            if self.raw:
+                self.path = self.path[len("/__raw"):]
+            super().do_GET()
+
+        def guess_type(self, path):
+            return "text/plain; charset=utf-8" if getattr(self, "raw", False) else super().guess_type(path)
+
         def do_POST(self):
             size = int(self.headers.get("Content-Length", 0))
             reports.put(json.loads(self.rfile.read(size)))

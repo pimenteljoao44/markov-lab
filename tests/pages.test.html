@@ -16,12 +16,15 @@
 <div id="stage"></div>
 <script type="module">
 import { encodeShare } from '../js/models/share.js';
-import { TRAIL_KEY, MIN_EXPLAIN } from '../js/platform/progress.js';
+import { externalRequests } from './hooks/external.js';
+import { TRAIL_KEY, TRAIL_UI_KEY, MIN_EXPLAIN } from '../js/platform/progress.js';
 import { LLM_KEY } from '../js/llm/state.js';
 import { EOS } from '../js/llm/ngram.js';
+import { CHALLENGES } from '../js/challenges/definitions.js';
+import { COURSE } from '../js/learn/course.js';
 
 const NOTEBOOK = 'llmlab:caderno';
-const KEYS = [TRAIL_KEY, LLM_KEY, NOTEBOOK, 'markovlab:v3', 'markovlab:course', 'markovlab:coach'];
+const KEYS = [TRAIL_KEY, TRAIL_UI_KEY, LLM_KEY, NOTEBOOK, 'markovlab:v3', 'markovlab:course', 'markovlab:coach'];
 const BASE = new URL('../', location.href).href;
 const out = document.getElementById('out');
 const backup = Object.fromEntries(KEYS.map((k) => [k, localStorage.getItem(k)]));
@@ -90,12 +93,65 @@ function namedControls() {
     assert(name, `controle sem nome: ${el.outerHTML.slice(0, 90)}`);
   }
 }
-function externalRequests() {
-  const external = win().performance.getEntriesByType('resource').map((r) => r.name).filter((u) => new URL(u).origin !== win().location.origin);
+async function noExternalRequests(page) {
+  const external = await externalRequests(win(), BASE, page);
   same(external.length, 0, `pedidos externos (${external.join(', ')})`);
 }
 
+const LONG = 'Uma explicação escrita com as próprias palavras, comprida o bastante para contar como explicada.';
+/** Tudo da fase 0 feito: o laboratório inteiro, as leituras e as três explicações. */
+const PHASE0_DONE = {
+  'markovlab:v3': { completed: CHALLENGES.map((c) => c.id) },
+  'markovlab:course': { done: COURSE.map((s) => s.id) },
+  [TRAIL_KEY]: {
+    checks: ['khan-estatistica', '3b1b-algebra', '3b1b-calculo'],
+    notes: { 'explica-processos': LONG, 'explica-vetores': LONG, 'explica-gradiente': LONG },
+  },
+};
+const closedPhases = () => $$('.phase.closed').map((p) => p.dataset.phase).join();
+/** A rolagem suave quase não anda com a janela em segundo plano: nos testes importa onde ela termina. */
+function instantScroll() {
+  const native = win().Element.prototype.scrollIntoView;
+  win().Element.prototype.scrollIntoView = function (options) {
+    native.call(this, { ...options, behavior: 'instant' });
+  };
+}
+/** Guarda o que a página mandaria baixar, sem baixar nada. */
+function captureDownloads() {
+  const files = [];
+  win().URL.createObjectURL = (blob) => {
+    files.push(blob);
+    return 'blob:teste';
+  };
+  win().HTMLAnchorElement.prototype.click = function () {};
+  return files;
+}
+
 const TESTS = [
+  // ── 0. Só o que é da página
+  ['as três páginas trazem a política que barra conteúdo de fora', async () => {
+    for (const page of ['index.html', 'markov.html', 'llm.html']) {
+      const source = await (await fetch(`${BASE}${page}`)).text();
+      const policy = source.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] || '';
+      assert(/default-src 'self'/.test(policy), `${page}: sem política`);
+      assert(!/unsafe-eval|script-src|\*/.test(policy), `${page}: política frouxa (${policy})`);
+      assert(!/<script(?![^>]*\ssrc=)[^>]*>/.test(source), `${page}: script embutido no HTML`);
+      assert(!/\son[a-z]+\s*=/.test(source), `${page}: tratador de evento embutido no HTML`);
+      assert(source.indexOf('Content-Security-Policy') < source.indexOf('<script'), `${page}: a política vem antes de qualquer script`);
+    }
+  }],
+  ['script de outro site é barrado pelo navegador, sem derrubar a página', async () => {
+    await boot('index.html');
+    await ready();
+    const blocked = new Promise((resolve) => doc().addEventListener('securitypolicyviolation', (e) => resolve(e.blockedURI), { once: true }));
+    const script = doc().createElement('script');
+    script.src = 'https://exemplo.invalid/espiao.js';
+    doc().head.appendChild(script);
+    const uri = await Promise.race([blocked, sleep(3000).then(() => 'nada foi barrado')]);
+    assert(uri.includes('exemplo.invalid'), uri);
+    assert(!$('#boot-error'), 'script de fora barrado não é falha da página');
+  }],
+
   // ── 1. Trilha
   ['trilha: abre com as cinco fases, sem falar com outro site', async () => {
     await boot('index.html');
@@ -105,7 +161,7 @@ const TESTS = [
     same(text('.total-pct'), '0%', 'progresso');
     assert(/Laboratório de Markov/.test(text('.next-title')), text('.next-title'));
     await doc().fonts.ready;
-    externalRequests();
+    await noExternalRequests('index.html');
     assert(!$('#boot-error'), 'sem mensagem de erro');
     namedControls();
   }],
@@ -152,6 +208,101 @@ const TESTS = [
     assert($('[data-item="lab-markov"]').classList.contains('spot'), 'item destacado');
     same(doc().activeElement, $('[data-item="lab-markov"] [data-open]'), 'foco no botão de abrir');
   }],
+  ['trilha: só a fase do próximo passo abre sozinha; a escolha de abrir e fechar fica guardada', async () => {
+    await boot('index.html');
+    await ready();
+    same(closedPhases(), 'fase1,fase2,fase3,fase4', 'fases fechadas ao abrir');
+    assert($('#body-fase1').hidden && !$('#body-fase0').hidden, 'só o conteúdo da fase aberta aparece');
+    same($('[data-toggle="fase0"]').getAttribute('aria-expanded'), 'true', 'estado da fase aberta');
+    same($('[data-toggle="fase1"]').getAttribute('aria-expanded'), 'false', 'estado da fase fechada');
+    $('[data-toggle="fase2"]').click();
+    assert(!$('#body-fase2').hidden, 'um clique abre');
+    $('[data-toggle="fase0"]').click();
+    assert($('#body-fase0').hidden, 'outro clique fecha');
+    await reload();
+    same(closedPhases(), 'fase0,fase1,fase3,fase4', 'escolhas guardadas');
+    assert($$('.item').length > 30, 'os itens continuam todos na página');
+  }],
+  ['trilha: fase concluída recolhe e a seguinte abre', async () => {
+    await boot('index.html', { storage: PHASE0_DONE });
+    await ready();
+    same(closedPhases(), 'fase0,fase2,fase3,fase4', 'fases fechadas');
+    assert($('[data-phase="fase0"]').classList.contains('complete'), 'fase 0 completa');
+    same($('.idx-row.done').dataset.phaseGo, 'fase0', 'índice marca a fase feita');
+    same(text('.idx-row.done .idx-num'), '✓', 'marca que não depende de cor');
+    same($('.idx-row.current').dataset.phaseGo, 'fase1', 'índice marca a fase atual');
+    same($('.item.next').dataset.item, '3b1b-llm', 'próximo passo na lista');
+    same($('.item.next').getAttribute('aria-current'), 'step', 'próximo passo para leitor de tela');
+    assert(!$('[data-next-open]') && /Ir para lá/.test(text('[data-goto]')), 'aula não tem botão de abrir laboratório');
+    $('[data-check="3b1b-llm"]').click();
+    same($('.item.next').dataset.item, 'lab-llm', 'o marcador acompanha o progresso');
+    same($('[data-next-open]').getAttribute('href'), 'llm.html', 'laboratório abre direto da ficha');
+  }],
+  ['trilha: o índice leva à fase e a abre, sem mudar a preferência', async () => {
+    await boot('index.html');
+    await ready();
+    instantScroll();
+    same($$('.idx-row').length, 5, 'fases no índice');
+    $('[data-phase-go="fase3"]').click();
+    assert(!$('#body-fase3').hidden, 'abre a fase');
+    same(doc().activeElement, $('[data-toggle="fase3"]'), 'foco no título da fase');
+    const top = $('[data-phase="fase3"]').getBoundingClientRect().top;
+    assert(top >= 0 && top < win().innerHeight / 2, `a fase vem para o alto da tela (${Math.round(top)})`);
+    await reload();
+    assert($('#body-fase3').hidden, 'ir até uma fase não vira preferência');
+  }],
+  ['trilha: "Ver na trilha" abre a fase que estava fechada', async () => {
+    await boot('index.html');
+    await ready();
+    instantScroll();
+    $('[data-toggle="fase0"]').click();
+    assert($('#body-fase0').hidden, 'fase fechada');
+    $('[data-goto]').click();
+    assert(!$('#body-fase0').hidden, 'a fase abre');
+    assert($('[data-item="lab-markov"]').classList.contains('spot'), 'item destacado');
+  }],
+  ['trilha: abrir e recolher todas as fases', async () => {
+    await boot('index.html');
+    await ready();
+    same(text('[data-all]'), 'Abrir todas as fases', 'botão');
+    $('[data-all]').click();
+    same(closedPhases(), '', 'todas abertas');
+    same(text('[data-all]'), 'Recolher todas as fases', 'botão troca de nome');
+    $('[data-all]').click();
+    same(closedPhases(), 'fase0,fase1,fase2,fase3,fase4', 'todas fechadas');
+    noOverflow();
+    namedControls();
+  }],
+  ['trilha: concluir uma fase avisa na hora', async () => {
+    await boot('index.html');
+    await ready();
+    instantScroll();
+    $('[data-phase-go="fase4"]').click();
+    $('[data-check="entrega-treinamento"]').click();
+    $('[data-check="entrega-apoio"]').click();
+    assert(!$$('.toast').length, 'ainda falta a explicação');
+    type($('[data-note="explica-capacitacao"]'), LONG);
+    const toast = await until(() => $$('.toast').find((t) => /Fase 4 concluída/.test(t.textContent)), 'o aviso');
+    assert(/Plano de capacitação/.test(toast.textContent), 'o aviso lembra o combinado da fase');
+    same(text('[data-phase-go="fase4"] .idx-num'), '✓', 'índice');
+    assert(!$('#body-fase4').hidden, 'a fase não fecha debaixo de quem acabou de concluí-la');
+    type($('[data-note="explica-capacitacao"]'), `${LONG} E mais um pouco.`);
+    same($$('.toast').filter((t) => /Fase 4 concluída/.test(t.textContent)).length, 1, 'avisa uma vez só');
+  }],
+  ['trilha: as explicações saem em um documento só', async () => {
+    await boot('index.html');
+    await ready();
+    const files = captureDownloads();
+    $('[data-notes]').click();
+    same(files.length, 0, 'sem nada escrito não há arquivo');
+    await until(() => $$('.toast').find((t) => /Ainda não há explicações/.test(t.textContent)), 'o aviso de que falta escrever');
+    type($('[data-note="explica-processos"]'), LONG);
+    $('[data-notes]').click();
+    same(files.length, 1, 'um arquivo');
+    const written = await files[0].text();
+    assert(written.startsWith('# Caderno de IA aplicada: minhas explicações'), written.slice(0, 50));
+    assert(written.includes('## Fase 0') && written.includes(LONG), 'fase e texto');
+  }],
   ['trilha: link de modelo antigo segue para o Laboratório de Markov', async () => {
     const chain = { meta: { title: 'Link antigo', unit: 'cliente', step: 'mês' }, states: [{ label: 'Ativo' }, { label: 'Saiu' }], matrix: [[0.9, 0.1], [0, 1]] };
     await boot('index.html', { hash: encodeShare(chain) });
@@ -181,7 +332,7 @@ const TESTS = [
     assert(/Contexto reconhecido/.test(text('#panel-context')), text('#panel-context'));
     await until(() => win().katex, 'o KaTeX carregar');
     await doc().fonts.ready;
-    externalRequests();
+    await noExternalRequests('llm.html');
     assert(!$('#boot-error'), 'sem mensagem de erro');
     namedControls();
   }],
@@ -374,6 +525,17 @@ const TESTS = [
     await until(() => win().location.pathname.endsWith('/markov.html') && /^Tokens de/.test($('#model-title')?.textContent || ''), 'a cadeia abrir', 15000);
     assert(saved(LLM_KEY).bridged, 'a travessia fica registrada');
     assert(doc().querySelectorAll('g.node').length >= 2, 'potes no diagrama');
+  }],
+  ['LLM: o índice dos painéis leva até o último', async () => {
+    await boot('llm.html');
+    await ready();
+    instantScroll();
+    same($$('.side-nav [data-panel]').map((b) => b.textContent).join(), 'Contexto,Medidas,Como Markov,No trabalho', 'painéis');
+    same($('.side-nav [aria-current]').dataset.panel, 'panel-context', 'começa no primeiro');
+    $('[data-panel="panel-work"]').click();
+    same(doc().activeElement, $('#panel-work'), 'foco no painel');
+    const work = $('#panel-work').getBoundingClientRect();
+    assert(work.top < win().innerHeight && work.bottom > 0, 'o painel fica à vista');
   }],
   ['LLM: cabe na tela de um celular', async () => {
     await boot('llm.html', { width: 360, height: 700 });

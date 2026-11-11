@@ -1,18 +1,52 @@
 // Página da trilha: as fases, o que fazer em cada módulo e quanto já foi feito.
 // A lista é desenhada uma vez; marcar um item atualiza só os números, para não tirar o foco de quem está escrevendo.
-import { escapeHtml } from '../util.js';
+import { escapeHtml, keepFocus } from '../util.js';
 import { PHASES, KINDS } from './syllabus.js';
 import { LABS } from './labs.js';
-import { loadTrail, saveTrail, itemProgress, labProgress, phaseProgress, overallProgress, nextStep, exportAll, importAll, MIN_EXPLAIN } from './progress.js';
+import {
+  loadTrail, saveTrail, itemProgress, labProgress, phaseProgress, overallProgress, nextStep,
+  exportAll, importAll, notesMarkdown, MIN_EXPLAIN, TRAIL_UI_KEY,
+} from './progress.js';
 import { toast } from '../components/Toast.js';
 
 const titleOf = (item) => (item.kind === 'lab' ? LABS[item.lab].title : item.title);
 const percent = (fraction) => `${Math.round(fraction * 100)}%`;
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const phaseColors = (phase) => `--c:var(--ph${phase.num});--c-ink:var(--ph${phase.num}-ink)`;
+
+/** Fases que a pessoa abriu ou fechou à mão. As demais seguem o padrão: aberta só a do próximo passo. */
+function loadChoices() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TRAIL_UI_KEY))?.open;
+    const choices = {};
+    for (const phase of PHASES) if (typeof saved?.[phase.id] === 'boolean') choices[phase.id] = saved[phase.id];
+    return choices;
+  } catch {
+    return {};
+  }
+}
+
+function saveChoices(choices) {
+  try {
+    localStorage.setItem(TRAIL_UI_KEY, JSON.stringify({ open: choices }));
+  } catch {
+    /* armazenamento indisponível: a escolha vale até fechar a página */
+  }
+}
+
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 
 export class Trail {
-  constructor(listEl, sideEl) {
-    Object.assign(this, { listEl, sideEl });
+  constructor(listEl, sideEl, toolsEl) {
+    Object.assign(this, { listEl, sideEl, toolsEl });
     this.trail = loadTrail();
+    this.choices = loadChoices();
     this.saveTimer = null;
     this.render();
     listEl.addEventListener('change', (e) => {
@@ -20,6 +54,13 @@ export class Trail {
     });
     listEl.addEventListener('input', (e) => {
       if (e.target.matches('[data-note]')) this.setNote(e.target.dataset.note, e.target.value);
+    });
+    listEl.addEventListener('click', (e) => {
+      const toggle = e.target.closest('[data-toggle]');
+      if (toggle) this.setOpen(toggle.dataset.toggle, !this.open[toggle.dataset.toggle]);
+    });
+    toolsEl?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-all]')) this.setAllOpen(!this.allOpen());
     });
     sideEl.addEventListener('click', (e) => this.onSideClick(e));
     sideEl.addEventListener('change', (e) => {
@@ -36,24 +77,34 @@ export class Trail {
   reload() {
     this.flush();
     this.trail = loadTrail();
+    this.choices = loadChoices();
     this.render();
   }
 
   // ── desenho
   render() {
+    // Quarenta e tantos itens abertos de uma vez escondem o que importa: só a fase em andamento abre sozinha.
+    // A conta é feita ao desenhar, não a cada item marcado, para a fase não fechar debaixo de quem a concluiu.
+    const current = nextStep(this.trail)?.phase.id;
+    this.open = Object.fromEntries(PHASES.map((phase) => [phase.id, this.choices[phase.id] ?? phase.id === current]));
     this.listEl.innerHTML = PHASES.map((phase) => this.phaseHtml(phase)).join('');
+    this.syncTools();
     this.refresh();
   }
 
   phaseHtml(phase) {
-    return `<li class="phase" data-phase="${phase.id}" style="--c:var(--ph${phase.num});--c-ink:var(--ph${phase.num}-ink)">
+    const open = this.open[phase.id];
+    return `<li class="phase ${open ? '' : 'closed'}" data-phase="${phase.id}" style="${phaseColors(phase)}">
       <header class="ph-head">
         <span class="ph-num" aria-hidden="true">${phase.num}</span>
-        <div class="ph-title"><h3><span class="sr">Fase ${phase.num}: </span>${escapeHtml(phase.title)}</h3><p>${escapeHtml(phase.goal)}</p></div>
+        <div class="ph-title">
+          <h3><button type="button" class="ph-toggle" data-toggle="${phase.id}" aria-expanded="${open}" aria-controls="body-${phase.id}"><span class="chev" aria-hidden="true"></span><span class="sr">Fase ${phase.num}: </span>${escapeHtml(phase.title)}</button></h3>
+          <p>${escapeHtml(phase.goal)}</p>
+        </div>
         <div class="ph-prog"><div class="ch-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso da fase ${phase.num}"><div class="ch-fill"></div></div><span data-phase-count></span></div>
       </header>
       <p class="ph-deliver"><b>Ao final:</b> ${escapeHtml(phase.deliverable)}</p>
-      <div class="modules">${phase.modules.map((m) => this.moduleHtml(m)).join('')}</div>
+      <div class="modules" id="body-${phase.id}" ${open ? '' : 'hidden'}>${phase.modules.map((m) => this.moduleHtml(m)).join('')}</div>
     </li>`;
   }
 
@@ -92,7 +143,7 @@ export class Trail {
   /** Atualiza números, barras e a ficha lateral sem redesenhar a lista. */
   refresh() {
     for (const phase of PHASES) {
-      const el = this.listEl.querySelector(`[data-phase="${phase.id}"]`);
+      const el = this.phaseEl(phase.id);
       const p = phaseProgress(phase, this.trail);
       el.querySelector('.ch-fill').style.width = percent(p.fraction);
       el.querySelector('.ch-progress').setAttribute('aria-valuenow', Math.round(p.fraction * 100));
@@ -102,11 +153,13 @@ export class Trail {
         for (const item of module.items) this.refreshItem(item);
       }
     }
-    this.renderSide();
+    const next = nextStep(this.trail);
+    this.markNext(next);
+    this.renderSide(next);
   }
 
   refreshItem(item) {
-    const el = this.listEl.querySelector(`[data-item="${item.id}"]`);
+    const el = this.itemEl(item.id);
     el.classList.toggle('done', itemProgress(item, this.trail) === 1);
     if (item.kind === 'lab' && LABS[item.lab].href) {
       const { done, total } = labProgress(item.lab);
@@ -119,20 +172,33 @@ export class Trail {
     }
   }
 
-  renderSide() {
+  /** Marca na lista o item do próximo passo, para ele ser achado sem ler tudo de novo. */
+  markNext(next) {
+    const old = this.listEl.querySelector('.item.next');
+    old?.classList.remove('next');
+    old?.removeAttribute('aria-current');
+    if (!next) return;
+    const el = this.itemEl(next.item.id);
+    el.classList.add('next');
+    el.setAttribute('aria-current', 'step');
+  }
+
+  renderSide(next) {
     const total = overallProgress(this.trail);
-    const next = nextStep(this.trail);
-    const nextHtml = next
-      ? `<p class="next-label">Próximo passo</p>
-         <p class="next-title"><span class="kind" data-kind="${next.item.kind}">${KINDS[next.item.kind]}</span> ${escapeHtml(titleOf(next.item))}</p>
-         <p class="card-sub">Fase ${next.phase.num} · ${escapeHtml(next.module.title)}</p>
-         <button type="button" class="btn btn-primary btn-flat" data-goto="${next.item.id}">Ir para lá</button>`
-      : '<p class="next-title">Trilha concluída.</p><p class="card-sub">Volte aos laboratórios quando um problema novo aparecer no trabalho.</p>';
-    this.sideEl.innerHTML = `
+    const index = PHASES.map((phase) => {
+      const p = phaseProgress(phase, this.trail);
+      const done = p.total > 0 && p.fraction === 1;
+      return `<li><button type="button" class="idx-row ${done ? 'done' : ''} ${next?.phase.id === phase.id ? 'current' : ''}" data-phase-go="${phase.id}" style="${phaseColors(phase)}">
+        <span class="idx-num" aria-hidden="true">${done ? '✓' : phase.num}</span>
+        <span class="idx-title"><span class="sr">Fase ${phase.num}: </span>${escapeHtml(phase.title)}</span>
+        <span class="idx-pct">${percent(p.fraction)}</span></button></li>`;
+    }).join('');
+    const html = `
       <section class="card">
         <div class="card-head"><h2>Onde você está</h2><span class="total-pct">${percent(total.fraction)}</span></div>
         <div class="ch-progress wide" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(total.fraction * 100)}" aria-label="Progresso da trilha"><div class="ch-fill" style="width:${percent(total.fraction)}"></div></div>
-        ${nextHtml}
+        ${this.nextHtml(next)}
+        <ol class="idx" aria-label="Ir para uma fase">${index}</ol>
       </section>
       <section class="card">
         <div class="card-head"><h2>Como estudar aqui</h2></div>
@@ -150,20 +216,92 @@ export class Trail {
           <button type="button" class="btn btn-sm" data-export>Guardar cópia</button>
           <label class="btn btn-sm btn-quiet">Abrir cópia<input type="file" accept="application/json,.json" data-import hidden></label>
         </div>
+        <p class="card-sub notes-sub">O que você escreveu em cada “Explique” também sai como um documento só, para ler ou imprimir.</p>
+        <div class="tool-row"><button type="button" class="btn btn-sm" data-notes>Baixar minhas explicações</button></div>
       </section>`;
+    keepFocus(this.sideEl, () => {
+      this.sideEl.innerHTML = html;
+    });
+  }
+
+  nextHtml(next) {
+    if (!next) return '<p class="next-title">Trilha concluída.</p><p class="card-sub">Volte aos laboratórios quando um problema novo aparecer no trabalho.</p>';
+    const lab = next.item.kind === 'lab' ? LABS[next.item.lab] : null;
+    // Quando o próximo passo é um laboratório, o clique mais provável é abri-lo: ele vem primeiro.
+    const actions = lab
+      ? `<a class="btn btn-primary btn-flat" href="${lab.href}" data-next-open>Abrir o laboratório</a>
+         <button type="button" class="btn btn-quiet" data-goto="${next.item.id}">Ver na trilha</button>`
+      : `<button type="button" class="btn btn-primary btn-flat" data-goto="${next.item.id}">Ir para lá</button>`;
+    return `<p class="next-label">Próximo passo</p>
+      <p class="next-title"><span class="kind" data-kind="${next.item.kind}">${KINDS[next.item.kind]}</span> ${escapeHtml(titleOf(next.item))}</p>
+      <p class="card-sub">Fase ${next.phase.num} · ${escapeHtml(next.module.title)}</p>
+      <div class="tool-row next-actions">${actions}</div>`;
+  }
+
+  phaseEl(id) {
+    return this.listEl.querySelector(`[data-phase="${id}"]`);
+  }
+
+  itemEl(id) {
+    return this.listEl.querySelector(`[data-item="${id}"]`);
+  }
+
+  // ── abrir e fechar fases
+  /** `remember` guarda a escolha para a próxima visita; ir até um item abre a fase só por agora. */
+  setOpen(id, on, remember = true) {
+    this.open[id] = on;
+    const el = this.phaseEl(id);
+    el.classList.toggle('closed', !on);
+    el.querySelector('.modules').hidden = !on;
+    el.querySelector('[data-toggle]').setAttribute('aria-expanded', String(on));
+    if (remember) {
+      this.choices[id] = on;
+      saveChoices(this.choices);
+    }
+    this.syncTools();
+  }
+
+  allOpen() {
+    return PHASES.every((phase) => this.open[phase.id]);
+  }
+
+  setAllOpen(on) {
+    for (const phase of PHASES) this.setOpen(phase.id, on);
+  }
+
+  syncTools() {
+    const button = this.toolsEl?.querySelector('[data-all]');
+    if (button) button.textContent = this.allOpen() ? 'Recolher todas as fases' : 'Abrir todas as fases';
   }
 
   // ── mudanças
+  completedPhases() {
+    return PHASES.filter((phase) => {
+      const p = phaseProgress(phase, this.trail);
+      return p.total > 0 && p.fraction === 1;
+    }).map((phase) => phase.id);
+  }
+
+  /** Fechar uma fase é o marco da trilha: avisa na hora em que acontece. */
+  celebrate(before) {
+    const phase = PHASES.find((p) => !before.includes(p.id) && this.completedPhases().includes(p.id));
+    if (phase) toast(`Fase ${phase.num} concluída`, { type: 'ok', sub: `Você chegou ao combinado: ${phase.deliverable}`, timeout: 7000 });
+  }
+
   setCheck(id, on) {
+    const before = this.completedPhases();
     if (on) this.trail.checks.add(id);
     else this.trail.checks.delete(id);
     saveTrail(this.trail);
     this.refresh();
+    this.celebrate(before);
   }
 
   setNote(id, text) {
+    const before = this.completedPhases();
     this.trail.notes[id] = text;
     this.refresh();
+    this.celebrate(before);
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.flush(), 400);
   }
@@ -176,27 +314,51 @@ export class Trail {
     saveTrail(this.trail);
   }
 
-  onSideClick(e) {
-    const go = e.target.closest('[data-goto]');
-    if (go) {
-      const el = this.listEl.querySelector(`[data-item="${go.dataset.goto}"]`);
-      el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      (el.querySelector('[data-open], textarea, a, input') || el).focus({ preventScroll: true });
-      el.classList.add('spot');
-      setTimeout(() => el.classList.remove('spot'), 1800);
-      return;
-    }
-    if (e.target.closest('[data-export]')) this.exportFile();
+  // ── navegação
+  scrollTo(el) {
+    el.scrollIntoView({ block: 'center', behavior: calm() ? 'auto' : 'smooth' });
   }
 
+  goToItem(id) {
+    const el = this.itemEl(id);
+    this.setOpen(el.closest('[data-phase]').dataset.phase, true, false);
+    this.scrollTo(el);
+    (el.querySelector('[data-open], textarea, a, input') || el).focus({ preventScroll: true });
+    el.classList.add('spot');
+    setTimeout(() => el.classList.remove('spot'), 1800);
+  }
+
+  goToPhase(id) {
+    this.setOpen(id, true, false);
+    const el = this.phaseEl(id);
+    el.scrollIntoView({ block: 'start', behavior: calm() ? 'auto' : 'smooth' });
+    el.querySelector('[data-toggle]').focus({ preventScroll: true });
+  }
+
+  onSideClick(e) {
+    const go = e.target.closest('[data-goto]');
+    if (go) return this.goToItem(go.dataset.goto);
+    const phase = e.target.closest('[data-phase-go]');
+    if (phase) return this.goToPhase(phase.dataset.phaseGo);
+    if (e.target.closest('[data-export]')) return this.exportFile();
+    if (e.target.closest('[data-notes]')) return this.exportNotes();
+  }
+
+  // ── cópias
   exportFile() {
     this.flush();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(exportAll(), null, 2)], { type: 'application/json' }));
-    a.download = 'caderno-de-ia.json';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    download('caderno-de-ia.json', JSON.stringify(exportAll(), null, 2), 'application/json');
     toast('Cópia guardada', { type: 'ok', sub: 'caderno-de-ia.json, na pasta de downloads.' });
+  }
+
+  exportNotes() {
+    const text = notesMarkdown(this.trail);
+    if (!text) {
+      toast('Ainda não há explicações escritas', { sub: 'Cada módulo termina com um “Explique”. O que você escrever lá aparece aqui.' });
+      return;
+    }
+    download('minhas-explicacoes.md', text, 'text/markdown');
+    toast('Explicações baixadas', { type: 'ok', sub: 'minhas-explicacoes.md, na pasta de downloads.' });
   }
 
   async importFile(input) {

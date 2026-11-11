@@ -118,15 +118,17 @@ export class InsightPanel {
     // Distribuição estacionária
     const hidden = isPiHidden(s);
     if (d.stationary) {
+      // Com π escondida por um desafio, nada na ficha pode entregá-la: nem a dica do mouse, nem o tamanho da barra.
+      const back = (i) => (d.stationary[i] > 1e-9 ? `${num(1 / d.stationary[i], 2)} ${v.steps}` : 'pode nunca voltar');
       const bars = S.map(
-        (st, i) => `<div class="pi-row" title="Tempo médio para voltar a ${escapeHtml(st.label)}: ${d.stationary[i] > 1e-9 ? `${num(1 / d.stationary[i], 2)} ${v.steps}` : 'pode nunca voltar'}">
+        (st, i) => `<div class="pi-row" ${hidden ? '' : `title="Tempo médio para voltar a ${escapeHtml(st.label)}: ${back(i)}"`}>
           <span class="lab">${dot(st)}${escapeHtml(st.label)}</span>
-          <div class="pi-bar"><div class="pi-fill" style="width:${(d.stationary[i] * 100).toFixed(2)}%;background:${st.color}"></div></div>
+          <div class="pi-bar"><div class="pi-fill" style="width:${hidden ? 0 : (d.stationary[i] * 100).toFixed(2)}%;background:${st.color}"></div></div>
           <span class="pi-val">${hidden ? '?' : num(d.stationary[i], 3)}</span></div>`
       ).join('');
       parts.push(`<div class="block-title"><h3>Equilíbrio π ${helpDot('pi', 'Explicar o equilíbrio')}</h3><span class="tex" data-tex="\\pi P = \\pi,\\ \\textstyle\\sum_i \\pi_i = 1"></span></div>
         <div class="pi-bars ${hidden ? 'pi-hidden' : ''}">${bars}${hidden ? `<div class="reveal-wrap"><button class="btn btn-sm" data-reveal>Mostrar π mesmo assim</button></div>` : ''}</div>
-        <p class="note">Em π, o que entra em cada estado é igual ao que sai. ${d.isErgodic ? '' : d.isIrreducible ? 'Como a cadeia é periódica, π é a fração média de tempo, não um limite.' : 'Única porque só há uma classe fechada; transitórios recebem 0.'} Passe o mouse numa barra para ver o tempo médio de volta ${helpDot('return-time', 'Explicar o tempo de volta')}.</p>`);
+        <p class="note">Em π, o que entra em cada estado é igual ao que sai. ${d.isErgodic ? '' : d.isIrreducible ? 'Como a cadeia é periódica, π é a fração média de tempo, não um limite.' : 'Única porque só há uma classe fechada; transitórios recebem 0.'} ${hidden ? '' : `Passe o mouse numa barra para ver o tempo médio de volta ${helpDot('return-time', 'Explicar o tempo de volta')}.`}</p>`);
     } else if (d.closedStationary.length > 1) {
       const blocks = d.closedStationary
         .map((cs) => {

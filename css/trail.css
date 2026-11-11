@@ -27,19 +27,26 @@
 
 .trail-intro h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; line-height: 1.15; }
 .trail-intro p { margin: 6px 0 0; max-width: 68ch; font-size: 15px; color: var(--ink-2); }
+.trail-intro .trail-tools { margin-top: 4px; }
+.trail-tools .text-btn { padding-left: 0; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* ───────── Fases ───────── */
 .phases { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 16px; }
 .phase { background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r); box-shadow: inset 0 5px 0 var(--c), 0 2px 0 var(--line); padding: 18px 18px 16px; }
-.ph-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+/* A faixa do título inteira abre e fecha a fase. Ela também ancora o texto só para leitor de tela,
+   que é absoluto: sem âncora ele escaparia da área de rolagem e esticaria a página. */
+.ph-head { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; cursor: pointer; }
+.ph-toggle { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ph-toggle::after { content: ''; position: absolute; inset: -6px; border-radius: 8px; }
+.ph-head:hover .ph-toggle { text-decoration: underline; text-decoration-color: var(--ink-3); text-underline-offset: 4px; }
+.chev { display: inline-block; width: .42em; height: .42em; margin: 0 .55em .12em .1em; border-right: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; transform: rotate(45deg); transition: transform .15s var(--ease); }
+.phase.closed .chev { transform: rotate(-45deg); margin-bottom: .05em; }
 .ph-num {
   display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%;
   border: 2px solid var(--c); color: var(--c-ink); font-family: var(--display); font-size: 21px; background: #fff;
 }
 .phase.complete .ph-num { background: var(--ok-ink); border-color: var(--ok-ink); color: #fff; }
-/* O texto só para leitor de tela é absoluto: sem este âncora ele escaparia da área de rolagem e esticaria a página. */
-.ph-title { position: relative; }
 .ph-title h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 19px; line-height: 1.2; }
 .ph-title p { margin: 2px 0 0; font-size: 13.5px; color: var(--ink-2); }
 .ph-prog { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
@@ -57,9 +64,11 @@
 .items { margin: 0; padding: 0; list-style: none; }
 .item { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: start; gap: 4px 12px; padding: 9px 4px; border-top: 1px dashed var(--line); border-radius: 6px; }
 .item.spot { outline: 3px solid var(--marker); outline-offset: 2px; }
+/* O próximo passo: marca-texto e um traço, para ser achado sem depender só da cor. */
+.item.next { background: var(--marker-soft); box-shadow: inset 4px 0 0 var(--ink); padding-left: 10px; }
 .it-body { min-width: 0; font-size: 14px; }
 .it-body b, .it-body a { font-weight: 700; color: var(--ink); }
-.it-body a { text-decoration: underline; text-decoration-color: var(--ink-3); text-underline-offset: 3px; }
+.it-body a { display: inline-block; min-height: 24px; text-decoration: underline; text-decoration-color: var(--ink-3); text-underline-offset: 3px; }
 .it-body a:hover { background: var(--marker-soft); }
 .it-body small { display: block; margin-top: 1px; font-size: 12.5px; color: var(--ink-2); }
 .it-body .field.area { width: 100%; margin-top: 6px; }
@@ -87,6 +96,22 @@
 .method li { margin: 6px 0; }
 .method b { color: var(--ink); }
 .trail-side .tool-row { margin-bottom: 0; }
+.trail-side .next-actions { margin-bottom: 14px; }
+.trail-side .notes-sub { margin-top: 12px; }
+
+/* Índice das fases: onde cada uma está e um atalho até ela. */
+.idx { margin: 0; padding: 10px 0 0; list-style: none; display: grid; gap: 2px; border-top: 1.5px solid var(--line-soft); }
+.idx-row {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  width: 100%; min-height: 32px; padding: 3px 6px; border: 0; border-radius: 8px; background: transparent;
+  font: inherit; font-size: 13px; color: var(--ink-2); text-align: left; cursor: pointer;
+}
+.idx-row:hover { background: var(--marker-soft); color: var(--ink); }
+.idx-row.current { color: var(--ink); font-weight: 700; }
+.idx-num { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--c); background: #fff; color: var(--c-ink); font-family: var(--display); font-size: 12px; }
+.idx-row.done .idx-num { background: var(--ok-ink); border-color: var(--ok-ink); color: #fff; }
+.idx-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idx-pct { font-family: var(--mono); font-size: 12px; }
 
 @media (max-width: 1180px) {
   .trail-main { grid-template-columns: minmax(0, 1fr); overflow: visible; }

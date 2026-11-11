@@ -4,6 +4,8 @@ import { PHASES } from './syllabus.js';
 import { LABS } from './labs.js';
 
 export const TRAIL_KEY = 'trilha:v1';
+/** Quais fases estão abertas na tela. É preferência de exibição, não progresso: fica fora da cópia. */
+export const TRAIL_UI_KEY = 'trilha:ui';
 /** Uma explicação com menos que isso ainda é um título, não um entendimento. */
 export const MIN_EXPLAIN = 80;
 
@@ -117,4 +119,23 @@ export function importAll(file, storage = localStorage) {
   }
   if (!restored) throw new Error('A cópia não tem nada que este caderno reconheça.');
   return restored;
+}
+
+/**
+ * Tudo que a pessoa escreveu nos itens "Explique", na ordem da trilha, como um documento em Markdown.
+ * Devolve texto vazio quando ainda não há nada escrito.
+ */
+export function notesMarkdown(trail) {
+  const phases = [];
+  for (const phase of PHASES) {
+    const modules = [];
+    for (const module of phase.modules) {
+      const answers = module.items
+        .filter((item) => item.kind === 'explica' && (trail.notes[item.id] || '').trim())
+        .map((item) => `**${item.title}**\n\n${trail.notes[item.id].trim()}`);
+      if (answers.length) modules.push(`### ${module.title}\n\n${answers.join('\n\n')}`);
+    }
+    if (modules.length) phases.push(`## Fase ${phase.num}: ${phase.title}\n\n${modules.join('\n\n')}`);
+  }
+  return phases.length ? `# Caderno de IA aplicada: minhas explicações\n\n${phases.join('\n\n')}\n` : '';
 }

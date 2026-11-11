@@ -11,6 +11,7 @@ import { ContextPanel, MeasuresPanel, BridgePanel, renderWorkPanel } from './com
 import { CorpusDialog } from './components/CorpusDialog.js';
 import { LabNotebook } from '../platform/LabNotebook.js';
 import { LabDock } from '../platform/LabDock.js';
+import { SideNav } from '../platform/SideNav.js';
 import { toast } from '../components/Toast.js';
 import { escapeHtml } from '../util.js';
 
@@ -123,6 +124,12 @@ new BridgePanel($('panel-bridge'), store, {
   },
 });
 renderWorkPanel($('panel-work'));
+new SideNav(document.querySelector('.side'), [
+  { id: 'panel-context', label: 'Contexto' },
+  { id: 'panel-measures', label: 'Medidas' },
+  { id: 'panel-bridge', label: 'Como Markov' },
+  { id: 'panel-work', label: 'No trabalho' },
+]);
 new LabDock($('challenge-dock'), { store, challenges: LLM_CHALLENGES, context });
 
 const corpusDialog = new CorpusDialog(store, { onPick: pickCorpus });

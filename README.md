@@ -22,7 +22,9 @@ Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do
 | 3 | Governar: segurança e conformidade | Rascunho de política de governança de agentes |
 | 4 | Levar para as pessoas | Plano de capacitação por papel |
 
-O progresso fica guardado só no navegador. **Guardar cópia**, na trilha, gera um arquivo para levar a outro computador.
+Só a fase em andamento abre sozinha; as outras ficam recolhidas, com o título e o progresso à vista, e abrem com um clique. A ficha **Onde você está** mostra o próximo passo, leva direto a ele e tem um índice das cinco fases. Na lista, o próximo passo vem marcado.
+
+O progresso fica guardado só no navegador. **Guardar cópia**, na trilha, gera um arquivo para levar a outro computador. **Baixar minhas explicações** junta tudo que você escreveu nos itens "Explique" em um documento só, para ler ou imprimir.
 
 Os laboratórios de vetores, descida de gradiente, recuperação, laço do agente e permissões aparecem na trilha como "em construção" e entram um por vez. O código das fases 2 em diante é escrito em Python, no ambiente de verdade: a trilha diz o que precisa ficar pronto e você marca quando ficou.
 
@@ -129,7 +131,8 @@ O padrão de código, de design e de texto, e o passo a passo para criar um labo
 
 | Pasta | Conteúdo |
 |---|---|
-| `js/platform/` | O que é comum a todos: a trilha (`syllabus.js`), o progresso, o registro de laboratórios, o store mínimo, o caderno de teoria e o dock de desafios |
+| `js/platform/` | O que é comum a todos: a trilha (`syllabus.js`), o progresso, o registro de laboratórios, o store mínimo, o caderno de teoria, o dock de desafios e o índice dos painéis laterais |
+| `js/boot.js` | Script comum, carregado antes dos módulos: encaminha links antigos de modelo e avisa quando a página não consegue iniciar |
 | `js/llm/` | Laboratório de LLM: motor de n-gramas e de sorteio, estado, desafios, caderno e componentes |
 | `js/math/` | Motor do Laboratório de Markov, sem dependências de interface: classificação da cadeia, π, absorção, tempos de chegada e estimativa a partir de dados |
 | `js/learn/` | Trilha de aulas do Laboratório de Markov: vídeos, etapas e o trecho que explica cada conceito |
@@ -150,6 +153,8 @@ python tests/run.py
 ```
 
 A cada `push` ou pull request no GitHub, o mesmo comando roda em `.github/workflows/tests.yml`.
+
+Alguns programas do computador, como antivírus, acrescentam um script próprio a toda página a caminho do navegador. Os testes que conferem que a página não fala com outro site descontam isso: comparam o HTML que chegou com o arquivo do repositório. Por isso esses testes dependem do servidor de `tests/run.py`.
 
 Para ver os testes no navegador, abra as páginas com o servidor rodando. O título da aba mostra `OK` ou `FALHOU`:
 

@@ -50,6 +50,7 @@ export class GraphView {
     this.edges = [];
     this.P = [[1]];
     this.geomCache = new Map();
+    this.keyRoom = 0;
 
     // Duplo clique no papel cria um estado ali mesmo (quando o nível permite editar estados).
     this.svg.on('dblclick', (ev) => {
@@ -85,7 +86,7 @@ export class GraphView {
       .on('drag', (ev, n) => {
         n.dragged = true;
         n.fx = clamp(ev.x, R + 8, this.w - R - 8);
-        n.fy = clamp(ev.y, R + 22, this.h - R - 64);
+        n.fy = clamp(ev.y, R + 22, this.floor);
       })
       .on('end', (ev, n) => {
         if (!ev.active) this.force.alphaTarget(0);
@@ -114,11 +115,19 @@ export class GraphView {
   ix(px) { return clamp((px - this.mx) / (this.w - 2 * this.mx), 0, 1); }
   iy(py) { return clamp((py - MARGIN * 0.75) / (this.h - MARGIN * 2.5), 0, 1); }
 
+  /** O mais baixo que o centro de um pote pode ficar: sobra lugar para o nome, para π e para a legenda. */
+  get floor() {
+    return this.h - R - 64 - this.keyRoom;
+  }
+
   resize() {
     const r = this.wrap.getBoundingClientRect();
     if (!r.width || !r.height) return;
     this.w = r.width;
     this.h = r.height;
+    // A legenda fica por cima do papel, no rodapé. Quando ela aparece, os potes param um pouco antes.
+    const key = this.wrap.querySelector('.key');
+    this.keyRoom = key && key.offsetParent ? 22 : 0;
     this.svg.attr('viewBox', `0 0 ${this.w} ${this.h}`);
     for (const n of this.nodes) {
       n.tx = this.px(n.st.x);
@@ -335,7 +344,7 @@ export class GraphView {
     let cx = 0, cy = 0;
     for (const n of this.nodes) {
       n.x = clamp(n.x, R + 8, this.w - R - 8);
-      n.y = clamp(n.y, R + 22, this.h - R - 64);
+      n.y = clamp(n.y, R + 22, this.floor);
       cx += n.x;
       cy += n.y;
     }

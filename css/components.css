@@ -111,7 +111,7 @@ a.btn { text-decoration: none; }
 .lesson-toggle:hover { color: var(--ink); background: var(--line-soft); }
 
 .switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink-2); user-select: none; }
-.switch input { appearance: none; -webkit-appearance: none; position: relative; width: 30px; height: 17px; margin: 0; border-radius: 999px; background: var(--line); cursor: pointer; transition: background .15s; }
+.switch input { appearance: none; -webkit-appearance: none; position: relative; width: 30px; height: 17px; margin: 0; border-radius: 999px; background: var(--ink-3); cursor: pointer; transition: background .15s; }
 .switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left .15s; }
 .switch input:checked { background: var(--ink); }
 .switch input:checked::after { left: 15px; background: var(--marker); }
@@ -126,6 +126,10 @@ a.btn { text-decoration: none; }
 .key svg { color: var(--ink-2); flex: none; }
 .key .q { pointer-events: auto; }
 .key-hint { color: var(--ink-3); }
+/* A legenda ocupa uma linha só. Em palco estreito a dica de uso sai, para não cobrir os potes de baixo. */
+.graph-wrap { container-type: inline-size; }
+.key { flex-wrap: nowrap; white-space: nowrap; }
+@container (max-width: 940px) { .key .key-hint { display: none; } }
 
 /* ───────── Diagrama (SVG) ───────── */
 .node { cursor: grab; transition: opacity .25s; }
@@ -180,7 +184,7 @@ a.btn { text-decoration: none; }
 .ctl { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
 .ctl output { font-family: var(--mono); color: var(--ink); min-width: 36px; font-size: 13px; }
 .ctl select {
-  height: 30px; padding: 0 8px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--card); font-size: 13px; cursor: pointer;
+  height: 30px; padding: 0 8px; border-radius: 8px; border: 1.5px solid var(--field-line); background: var(--card); font-size: 13px; cursor: pointer;
 }
 .sim-tick { margin-left: auto; font-size: 13px; color: var(--ink-2); }
 .sim-tick b { font-family: var(--display); font-weight: 400; font-size: 17px; color: var(--ink); margin-left: 4px; }
@@ -221,7 +225,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 
 .card-head h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 16px; letter-spacing: .005em; }
 .card-sub { margin: 0 0 12px; font-size: 13px; color: var(--ink-2); }
 .card-sub b { color: var(--ink); }
-.seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg { display: inline-flex; border: 1.5px solid var(--field-line); border-radius: 999px; overflow: hidden; }
 .seg button { border: 0; background: transparent; color: var(--ink-2); font-size: 12px; padding: 3px 10px; cursor: pointer; font-family: var(--mono); }
 .seg button.active { background: var(--ink); color: #fff; }
 .tool-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
@@ -248,7 +252,7 @@ tr:hover .del-state, .del-state:focus-visible { opacity: 1; }
 
 td.cell {
   position: relative; padding: 0; min-width: 46px; border-radius: 7px;
-  background: #fff; border: 1.5px solid var(--line); transition: background .15s, border-color .15s;
+  background: #fff; border: 1.5px solid var(--field-line); transition: background .15s, border-color .15s;
 }
 td.cell.diag { background: #f6f8fc; }
 td.cell.zero .cell-in { color: var(--ink-3); }
