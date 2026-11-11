@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Testes da plataforma</title>
+<style>
+  body { background:#f8fafd; color:#1f2a44; font:14px/1.6 ui-monospace, Consolas, monospace; padding:24px; }
+  .pass { color:#12a150 } .fail { color:#e5383b; font-weight:700 } h1 { font-size:16px }
+</style>
+</head>
+<body>
+<h1>Plataforma: trilha, progresso e o motor do laboratório de LLM (os fluxos estão em <a href="pages.test.html">pages.test.html</a>)</h1>
+<pre id="out"></pre>
+<script type="module">
+import { createStore } from '../js/platform/tinyStore.js';
+import { PHASES, KINDS, allItems } from '../js/platform/syllabus.js';
+import { LABS } from '../js/platform/labs.js';
+import { TRAIL_KEY, MIN_EXPLAIN, loadTrail, saveTrail, labProgress, itemProgress, phaseProgress, overallProgress, nextStep, exportAll, importAll } from '../js/platform/progress.js';
+import { tokenize, train, nextCounts, windowOf, contextsSeen, copiedFraction, BOS, EOS, MAX_ORDER } from '../js/llm/ngram.js';
+import { distribution, entropy, effectiveChoices, sample, step, generate } from '../js/llm/sampling.js';
+import { CORPORA, DEFAULT_CORPUS, CUSTOM_CORPUS } from '../js/llm/corpus.js';
+import { createLlmStore, sanitizeSettings, writtenTokens, corpusOf, LLM_KEY, DEFAULT_SETTINGS, MAX_GENERATED } from '../js/llm/state.js';
+import { LLM_CHALLENGES, context } from '../js/llm/challenges.js';
+import { LLM_TIPS, LLM_TOPICS } from '../js/llm/tips.js';
+import { chainFromSequences, bridgeUrl, END_STATE, BRIDGE_STATES } from '../js/llm/bridge.js';
+import { MIN_TOKENS } from '../js/llm/components/CorpusDialog.js';
+import { decodeShare } from '../js/models/share.js';
+import { analyze } from '../js/math/analyze.js';
+import { mulberry32 } from '../js/math/rng.js';
+
+const out = document.getElementById('out');
+let passed = 0, failed = 0;
+const failures = [];
+const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const pending = [];
+function t(name, fn) {
+  pending.push(async () => {
+    try { await fn(); passed++; out.innerHTML += `<span class="pass">✓ ${esc(name)}</span>\n`; }
+    catch (e) { failed++; failures.push(`${name}: ${e.message}`); out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`; }
+  });
+}
+function assert(c, msg = 'falhou') { if (!c) throw new Error(msg); }
+function same(a, b, label = 'valor') { assert(a === b, `${label}: veio "${a}", esperado "${b}"`); }
+function throws(fn, re) {
+  try { fn(); } catch (e) { assert(re.test(e.message), `mensagem inesperada: ${e.message}`); return; }
+  throw new Error('deveria ter lançado erro');
+}
+/** Armazenamento de mentira: os testes nunca tocam no que a pessoa tem salvo. */
+function memory(initial = {}) {
+  const m = new Map(Object.entries(initial).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]));
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), size: () => m.size };
+}
+const sumP = (dist) => dist.reduce((s, x) => s + x.p, 0);
+const TOY = 'A b. A c. A b.';
+const toy = (order = 1) => train(tokenize(TOY), order);
+const COUNTS = [['a', 6], ['b', 3], ['c', 1]];
+
+// ── store mínimo
+t('store: avisa os assinantes com as tags e recalcula o derivado', () => {
+  const calls = [];
+  const store = createStore({ n: 1, double: 0 }, (s, tags) => { s.double = s.n * 2; tags.add('derived'); });
+  same(store.get().double, 2, 'derivado inicial');
+  const off = store.subscribe((s, tags) => calls.push([...tags].sort().join(',')));
+  store.update((s) => (s.n = 5), 'valor');
+  same(store.get().double, 10, 'derivado');
+  same(calls[0], 'derived,valor', 'tags');
+  off();
+  store.update(null, 'outra');
+  same(calls.length, 1, 'depois de cancelar a assinatura');
+});
+
+// ── tokens
+t('tokenize: palavras em minúsculas, uma sequência por frase', () => {
+  same(JSON.stringify(tokenize('O pedido foi criado. A nota, emitida!\nFim')), JSON.stringify([['o', 'pedido', 'foi', 'criado'], ['a', 'nota', ',', 'emitida'], ['fim']]));
+});
+t('tokenize: mantém acentos, hífen e números', () => {
+  same(JSON.stringify(tokenize('A NF-e 123 não saiu')), JSON.stringify([['a', 'nf-e', '123', 'não', 'saiu']]));
+});
+t('tokenize: por letra, com o espaço visível', () => {
+  same(tokenize('ab c', 'char')[0].join(''), 'ab␣c');
+});
+t('tokenize: texto vazio ou só pontuação não gera frase', () => {
+  same(tokenize('').length, 0);
+  same(tokenize(' ... !!! \n').length, 0);
+  same(tokenize(null).length, 0);
+});
+
+// ── treino
+t('train: conta o que vem depois de cada contexto', () => {
+  const seen = nextCounts(toy(), ['a']);
+  same(JSON.stringify(seen.counts), JSON.stringify([['b', 2], ['c', 1]]));
+  same(seen.total, 3, 'total');
+  assert(!seen.backedOff && seen.used === 1, 'contexto reconhecido');
+});
+t('train: aprende como a frase começa e como termina', () => {
+  const m = toy();
+  same(JSON.stringify(nextCounts(m, []).counts), JSON.stringify([['a', 3]]), 'início');
+  same(JSON.stringify(nextCounts(m, ['b']).counts), JSON.stringify([[EOS, 2]]), 'fim');
+});
+t('train: vocabulário do mais frequente para o mais raro, sem os marcadores', () => {
+  const m = toy();
+  same(m.vocab.join(' '), 'a b c');
+  same(m.tokens, 6, 'tokens');
+  same(m.sentences, 3, 'frases');
+});
+t('train: tamanho do contexto fica entre 1 e o máximo', () => {
+  same(train(tokenize(TOY), 0).order, 1);
+  same(train(tokenize(TOY), 99).order, MAX_ORDER);
+  same(train(tokenize(TOY), 'x').order, 1);
+});
+t('janela: os últimos tokens, completados com o marcador de início', () => {
+  same(windowOf(toy(2), ['a']).join(' '), `${BOS} a`);
+  same(windowOf(toy(2), ['x', 'a', 'b']).join(' '), 'a b');
+});
+t('contexto maior guarda mais estados', () => {
+  const seqs = tokenize(CORPORA.pedidos.text);
+  const sizes = [1, 2, 3].map((order) => contextsSeen(train(seqs, order)));
+  assert(sizes[0] < sizes[1] && sizes[1] < sizes[2], sizes.join(' '));
+});
+t('empate: o fim da frase fica por último', () => {
+  same(nextCounts(train(tokenize('A b. A. A c.'), 1), ['a']).counts.map(([token]) => token).join(' '), `b c ${EOS}`);
+});
+
+// ── recuo
+t('recuo: contexto parcialmente visto usa o pedaço que conhece', () => {
+  const seen = nextCounts(toy(2), ['zzz', 'a']);
+  assert(seen.backedOff, 'deveria recuar');
+  same(seen.used, 1, 'tokens usados');
+  same(seen.context.join(' '), 'a', 'contexto usado');
+  same(JSON.stringify(seen.counts), JSON.stringify([['b', 2], ['c', 1]]));
+});
+t('recuo: contexto nunca visto cai na frequência geral', () => {
+  const seen = nextCounts(toy(), ['zzz']);
+  same(seen.used, 0, 'tokens usados');
+  assert(seen.backedOff, 'marca o recuo');
+  same(seen.total, 9, 'todas as transições contadas');
+  same(seen.counts[0][0], 'a', 'o mais frequente primeiro');
+});
+t('modelo sem texto não quebra', () => {
+  const m = train([], 2);
+  same(nextCounts(m, ['a']).counts.length, 0);
+  same(distribution(nextCounts(m, []).counts).length, 0);
+  same(generate(m, [], DEFAULT_SETTINGS, mulberry32(1)).length, 0);
+});
+
+// ── distribuição
+t('distribuição: temperatura 1 é a contagem pura e soma 1', () => {
+  const d = distribution(COUNTS);
+  assert(near(d[0].p, 0.6) && near(d[1].p, 0.3) && near(d[2].p, 0.1), JSON.stringify(d));
+  assert(near(sumP(d), 1), 'soma');
+  assert(d.every((x) => x.kept && near(x.p, x.base)), 'nada cortado');
+});
+t('distribuição: temperatura baixa concentra, alta espalha, sem mudar a ordem', () => {
+  const cold = distribution(COUNTS, { temperature: 0.5 });
+  const hot = distribution(COUNTS, { temperature: 2 });
+  assert(cold[0].p > 0.6 && hot[0].p < 0.6, `${cold[0].p} e ${hot[0].p}`);
+  assert(near(cold[0].p, 0.36 / 0.46), `fria: ${cold[0].p}`);
+  for (const d of [cold, hot]) {
+    assert(near(sumP(d), 1), 'soma');
+    assert(d[0].p >= d[1].p && d[1].p >= d[2].p, 'ordem');
+  }
+});
+t('distribuição: temperatura 0 deixa só o mais provável', () => {
+  const d = distribution(COUNTS, { temperature: 0 });
+  same(d[0].p, 1);
+  same(d.filter((x) => x.kept).length, 1, 'no sorteio');
+  same(d[0].base, 0.6, 'a contagem pura continua visível');
+});
+t('distribuição: temperatura muito baixa não vira NaN', () => {
+  const d = distribution(COUNTS, { temperature: 0.001 });
+  assert(d.every((x) => Number.isFinite(x.p)), JSON.stringify(d));
+  assert(near(d[0].p, 1, 1e-6), `${d[0].p}`);
+});
+t('top-k: mantém os k mais prováveis e renormaliza', () => {
+  const d = distribution(COUNTS, { topK: 2 });
+  same(d.map((x) => x.kept).join(), 'true,true,false');
+  assert(near(d[0].p, 2 / 3) && near(d[1].p, 1 / 3) && d[2].p === 0, JSON.stringify(d));
+});
+t('top-p: o menor grupo que soma pelo menos p', () => {
+  same(distribution(COUNTS, { topP: 0.5 }).filter((x) => x.kept).length, 1, 'p = 0,5');
+  same(distribution(COUNTS, { topP: 0.6 }).filter((x) => x.kept).length, 1, 'p = 0,6 (exato)');
+  same(distribution(COUNTS, { topP: 0.7 }).filter((x) => x.kept).length, 2, 'p = 0,7');
+  same(distribution(COUNTS, { topP: 0.95 }).filter((x) => x.kept).length, 3, 'p = 0,95');
+  assert(near(sumP(distribution(COUNTS, { topP: 0.7 })), 1), 'soma');
+});
+t('top-p age sobre o que sobrou do top-k', () => {
+  const d = distribution(COUNTS, { topK: 2, topP: 0.6 });
+  same(d.filter((x) => x.kept).length, 1, 'no sorteio');
+  same(d[0].p, 1);
+});
+t('entropia: 0 na certeza, log₂(n) no empate', () => {
+  same(entropy(distribution([['a', 5]])), 0);
+  assert(near(entropy(distribution([['a', 1], ['b', 1], ['c', 1], ['d', 1]])), 2), 'empate de 4');
+  assert(near(effectiveChoices(distribution([['a', 1], ['b', 1], ['c', 1], ['d', 1]])), 4), 'escolhas efetivas');
+  assert(entropy(distribution(COUNTS, { temperature: 2 })) > entropy(distribution(COUNTS)), 'temperatura alta aumenta a dúvida');
+});
+
+// ── sorteio
+t('sorteio: nunca escolhe o que foi cortado', () => {
+  const d = distribution(COUNTS, { topK: 1 });
+  const rand = mulberry32(3);
+  for (let i = 0; i < 200; i++) same(sample(d, rand).token, 'a');
+});
+t('sorteio: a frequência acompanha a distribuição', () => {
+  const d = distribution(COUNTS);
+  const rand = mulberry32(11);
+  const hits = { a: 0, b: 0, c: 0 };
+  for (let i = 0; i < 6000; i++) hits[sample(d, rand).token]++;
+  assert(Math.abs(hits.a / 6000 - 0.6) < 0.03 && Math.abs(hits.c / 6000 - 0.1) < 0.02, JSON.stringify(hits));
+});
+t('sorteio: gerador que devolve quase 1 ainda acha um token válido', () => {
+  same(sample(distribution(COUNTS), () => 0.9999999999999999).token, 'c');
+  same(sample([], () => 0.5), null);
+});
+t('geração: mesma semente e mesmos ajustes, mesmo texto', () => {
+  const m = train(tokenize(CORPORA.pedidos.text), 1);
+  const run = (seed) => generate(m, ['o', 'pedido', 'foi'], DEFAULT_SETTINGS, mulberry32(seed)).map((x) => x.token).join(' ');
+  same(run(7), run(7));
+  assert([1, 2, 3, 4, 5].some((seed) => run(seed) !== run(7)), 'outra semente deveria mudar alguma frase');
+});
+t('geração: para no fim da frase e respeita o limite', () => {
+  const m = train(tokenize(CORPORA.pedidos.text), 2);
+  const steps = generate(m, ['o', 'pedido', 'foi'], DEFAULT_SETTINGS, mulberry32(7), 40);
+  same(steps.at(-1).token, EOS, 'último token');
+  same(steps.filter((x) => x.token === EOS).length, 1, 'um fim só');
+  same(generate(m, [], { temperature: 1 }, mulberry32(1), 3).length <= 3, true, 'limite');
+});
+t('geração: temperatura 0 não depende da semente', () => {
+  const m = train(tokenize(CORPORA.chamados.text), 2);
+  const run = (seed) => generate(m, ['o', 'usuário'], { temperature: 0 }, mulberry32(seed), 20).map((x) => x.token).join(' ');
+  same(run(1), run(999));
+});
+t('passo: registra quanto do contexto foi reconhecido', () => {
+  const m = toy(2);
+  const known = step(m, ['a'], DEFAULT_SETTINGS, mulberry32(1));
+  assert(!known.backedOff && known.used === 2, JSON.stringify(known));
+  const unknown = step(m, ['zzz'], DEFAULT_SETTINGS, mulberry32(1));
+  assert(unknown.backedOff && unknown.used === 0, JSON.stringify(unknown));
+});
+t('cópia: sem medida em texto curto; 1 quando o contexto cobre a janela', () => {
+  const seqs = tokenize(CORPORA.pedidos.text);
+  same(copiedFraction(['o', 'pedido'], seqs), null);
+  const m = train(seqs, 3);
+  const made = generate(m, [], DEFAULT_SETTINGS, mulberry32(5), 40).filter((x) => x.token !== EOS).map((x) => x.token);
+  assert(made.length >= 4, `frase curta demais para medir: ${made.join(' ')}`);
+  same(copiedFraction(made, seqs), 1);
+  same(copiedFraction(['pedido', 'nota', 'pedido', 'nota', 'pedido'], seqs), 0);
+});
+t('cópia: só entram janelas com algo gerado; o começo digitado sozinho não conta', () => {
+  const seqs = tokenize('O pedido foi entregue ao cliente.');
+  const written = ['o', 'pedido', 'foi', 'entregue', 'ao'];
+  same(copiedFraction(written, seqs, 4, 5), null, 'nada gerado');
+  same(copiedFraction(written, seqs, 4, 3), 1, 'dois tokens gerados, duas janelas copiadas');
+  same(copiedFraction(['o', 'pedido', 'foi', 'cancelado'], seqs, 4, 3), 0, 'uma janela, não copiada');
+  same(copiedFraction(['x', 'y', 'o', 'pedido', 'foi', 'entregue'], seqs, 4, 5), 1, 'só a janela que termina no token gerado');
+});
+
+// ── textos prontos
+t('textos prontos: dão para treinar e o começo sugerido existe neles', () => {
+  assert(CORPORA[DEFAULT_CORPUS], 'texto padrão');
+  for (const [id, c] of Object.entries(CORPORA)) {
+    const seqs = tokenize(c.text);
+    const tokens = seqs.reduce((n, s) => n + s.length, 0);
+    assert(seqs.length >= 20 && tokens >= MIN_TOKENS, `${id}: ${seqs.length} frases, ${tokens} tokens`);
+    assert(c.title && c.about, `${id}: texto faltando`);
+    const seen = nextCounts(train(seqs, 1), tokenize(c.prompt).flat());
+    assert(!seen.backedOff && seen.counts.length >= 4, `${id}: o começo "${c.prompt}" precisa abrir pelo menos 4 opções (abriu ${seen.counts.length})`);
+  }
+});
+
+// ── estado do laboratório
+t('ajustes: valores fora da faixa ou inválidos são corrigidos', () => {
+  const s = sanitizeSettings({ order: 9, mode: 'xyz', temperature: -3, topK: 99, topP: 0, seed: 'abc' });
+  same(JSON.stringify(s), JSON.stringify({ order: 3, mode: 'word', temperature: 0, topK: 10, topP: 0.05, seed: 7 }));
+  same(JSON.stringify(sanitizeSettings()), JSON.stringify(DEFAULT_SETTINGS), 'sem nada, o padrão');
+});
+t('estado: começa com o texto padrão e calcula a distribuição', () => {
+  const s = createLlmStore(memory()).get();
+  same(s.corpus.id, DEFAULT_CORPUS);
+  same(s.prompt, CORPORA[DEFAULT_CORPUS].prompt, 'começo');
+  assert(s.derived.dist.length >= 4 && near(sumP(s.derived.dist), 1), 'distribuição');
+  same(writtenTokens(s).join(' '), 'o pedido foi', 'tokens escritos');
+  same(s.derived.copied, null, 'cópia sem medida');
+});
+t('estado: salvamento corrompido ou estranho cai no padrão', () => {
+  for (const raw of ['{quebrado', '"texto"', '[1,2]', '{"corpus":"nao-existe","settings":{"order":"x"},"completed":"abc","prompt":5}']) {
+    const s = createLlmStore(memory({ [LLM_KEY]: raw })).get();
+    same(s.corpus.id, DEFAULT_CORPUS, raw);
+    same(s.settings.order, 1, raw);
+    same(s.challenges.completed.length, 0, raw);
+  }
+});
+t('estado: texto colado que não dá para treinar é ignorado', () => {
+  same(createLlmStore(memory({ [LLM_KEY]: { corpus: CUSTOM_CORPUS, custom: ' ... ' } })).get().corpus.id, DEFAULT_CORPUS);
+});
+t('estado: salva e reabre ajustes, texto colado e desafios', () => {
+  const storage = memory();
+  const store = createLlmStore(storage);
+  store.update((s) => {
+    s.corpus = { id: CUSTOM_CORPUS, custom: 'Um dia de sol. Um dia de chuva. Um dia qualquer.' };
+    s.settings = sanitizeSettings({ ...s.settings, temperature: 0.3, order: 2, seed: 42 });
+    s.prompt = 'um dia';
+    s.challenges.completed.push('janela');
+  }, 'corpus', 'model', 'settings');
+  store.save();
+  const again = createLlmStore(storage).get();
+  same(again.corpus.id, CUSTOM_CORPUS);
+  same(corpusOf(again).title, 'Meu texto');
+  same(again.settings.temperature, 0.3);
+  same(again.settings.order, 2);
+  same(again.settings.seed, 42);
+  same(again.prompt, 'um dia');
+  same(again.challenges.completed.join(), 'janela');
+  same(again.derived.model.sentences, 3, 'modelo treinado com o texto colado');
+});
+t('estado: voltar o sorteio ao começo repete os mesmos números', () => {
+  const store = createLlmStore(memory());
+  const first = [store.rand(), store.rand()];
+  store.rewind();
+  same(String([store.rand(), store.rand()]), String(first));
+});
+
+// ── desafios
+const fresh = () => createLlmStore(memory());
+const check = (id, store) => LLM_CHALLENGES.find((c) => c.id === id).check(context(store.get()));
+t('desafios: têm tudo que o dock precisa', () => {
+  const ids = new Set();
+  const ctx = context(fresh().get());
+  for (const c of LLM_CHALLENGES) {
+    assert(!ids.has(c.id), `id repetido: ${c.id}`);
+    ids.add(c.id);
+    assert(c.title && c.desc && c.success && c.hints.length, `${c.id}: texto faltando`);
+    if (c.type === 'quiz') {
+      const { options } = c.quiz(ctx);
+      same(options.filter((o) => o.correct).length, 1, `${c.id}: resposta certa`);
+      assert(options.every((o) => o.correct || o.why), `${c.id}: toda errada explica o erro`);
+    } else {
+      const res = c.check(ctx);
+      assert(res.progress >= 0 && res.progress <= 1, `${c.id}: progresso ${res.progress}`);
+      assert(!res.done, `${c.id}: não pode começar concluído`);
+      assert(typeof res.live === 'string' && res.live, `${c.id}: texto ao vivo`);
+    }
+  }
+});
+t('desafio "mesma entrada": só conta frase gerada com temperatura 0', () => {
+  const store = fresh();
+  store.update((s) => (s.flags.coldRuns = 2), 'flags');
+  assert(!check('deterministico', store).done, 'com temperatura 1');
+  store.update((s) => (s.settings.temperature = 0), 'settings');
+  assert(check('deterministico', store).done, 'com temperatura 0');
+});
+t('desafio "corte a cauda": exatamente 2 tokens, com top-p ligado', () => {
+  const store = fresh();
+  assert(!check('nucleo', store).done, 'sem corte');
+  let found = false;
+  for (let p = 0.95; p > 0.04 && !found; p -= 0.05) {
+    store.update((s) => (s.settings.topP = +p.toFixed(2)), 'settings');
+    found = check('nucleo', store).done;
+  }
+  assert(found, 'algum top-p precisa deixar 2 tokens no texto padrão');
+  same(store.get().derived.kept, 2);
+});
+t('desafio "faça o modelo inventar": começo com palavra desconhecida', () => {
+  const store = fresh();
+  assert(!check('inventa', store).done, 'começo conhecido');
+  store.update((s) => (s.prompt = 'o pedido foi xilofone'), 'text');
+  assert(check('inventa', store).done, JSON.stringify(check('inventa', store)));
+});
+t('desafio "mais contexto, mais cópia": contexto de 3 e frase gerada', () => {
+  const store = fresh();
+  store.update((s) => (s.settings.order = 3), 'settings', 'model');
+  assert(!check('recita', store).done, 'sem frase gerada');
+  const s = store.get();
+  const steps = generate(s.derived.model, [], s.settings, mulberry32(5), MAX_GENERATED);
+  store.update((st) => {
+    st.prompt = '';
+    st.steps = steps;
+  }, 'text');
+  assert(check('recita', store).done, JSON.stringify(check('recita', store)));
+});
+t('desafio "veja a cadeia": só depois de atravessar a ponte', () => {
+  const store = fresh();
+  assert(!check('ponte', store).done);
+  store.update((s) => (s.flags.bridged = true), 'flags');
+  assert(check('ponte', store).done);
+});
+
+// ── caderno de teoria
+t('caderno: todo conceito tem assunto válido e texto sem buraco', () => {
+  const states = [fresh(), fresh(), fresh()];
+  states[1].update((s) => {
+    s.settings = sanitizeSettings({ ...s.settings, order: 3, mode: 'char', temperature: 0, topK: 3, topP: 0.5 });
+    s.prompt = 'xyz';
+  }, 'settings', 'model', 'text');
+  states[2].update((s) => {
+    s.steps = generate(s.derived.model, s.derived.prompt, s.settings, mulberry32(3), 30);
+  }, 'text');
+  for (const [id, tip] of Object.entries(LLM_TIPS)) {
+    assert(LLM_TOPICS.includes(tip.topic), `${id}: assunto "${tip.topic}"`);
+    assert(tip.title, `${id}: título`);
+    for (const store of states) {
+      const html = tip.body(context(store.get())) + (tip.math ? tip.math(context(store.get())) : '');
+      assert(html.length > 40, `${id}: texto curto`);
+      assert(!/undefined|NaN|\[object/.test(html), `${id}: ${html.match(/.{0,30}(undefined|NaN|\[object).{0,30}/)?.[0]}`);
+    }
+  }
+  for (const topic of LLM_TOPICS) assert(Object.values(LLM_TIPS).some((tip) => tip.topic === topic), `assunto vazio: ${topic}`);
+});
+t('caderno: todo botão "?" do laboratório aponta para um conceito que existe', async () => {
+  const files = ['js/llm/main.js', 'js/llm/components/TextStage.js', 'js/llm/components/SamplerBar.js', 'js/llm/components/Panels.js', 'llm.html'];
+  let found = 0;
+  for (const file of files) {
+    const source = await (await fetch(`../${file}`)).text();
+    for (const [, id] of source.matchAll(/(?:data-tip="|help\('|item\(')([a-z-]+)/g)) {
+      found++;
+      assert(LLM_TIPS[id], `${file}: conceito "${id}" não existe no caderno`);
+    }
+  }
+  assert(found >= 12, `só ${found} botões encontrados: a busca precisa ser revista`);
+});
+t('caderno: texto do usuário é escapado', () => {
+  const store = createLlmStore(memory({ [LLM_KEY]: { corpus: CUSTOM_CORPUS, custom: 'Um <img src=x onerror=alert(1)> dia. Outro dia de sol. Mais um dia.' } }));
+  store.update((s) => (s.prompt = '<b>oi'), 'text');
+  for (const tip of Object.values(LLM_TIPS)) assert(!/<img|<b>oi/.test(tip.body(context(store.get()))), 'marcação do usuário não pode virar HTML');
+});
+
+// ── ponte para o Laboratório de Markov
+t('ponte: a cadeia é válida, cabe no diagrama e tem o fim como estado sem saída', () => {
+  for (const c of Object.values(CORPORA)) {
+    const chain = chainFromSequences(tokenize(c.text), c.title);
+    const d = analyze(chain);
+    assert(chain.states.length <= BRIDGE_STATES && chain.states.length >= 2, `${c.title}: ${chain.states.length} estados`);
+    assert(d.allRowsOk, `${c.title}: linha não soma 1`);
+    const end = chain.states.findIndex((s) => s.label === END_STATE);
+    assert(end >= 0 && d.absorbing.includes(end), `${c.title}: o fim da frase precisa ser absorvente`);
+    same(chain.meta.step, 'token', 'passo');
+  }
+});
+t('ponte: o endereço abre no Laboratório de Markov', () => {
+  const url = bridgeUrl(tokenize(CORPORA.pedidos.text), CORPORA.pedidos.title);
+  assert(url.startsWith('markov.html#m='), url.slice(0, 30));
+  const chain = decodeShare(url.slice('markov.html'.length));
+  assert(chain.states.some((s) => s.label === 'pedido'), 'os tokens frequentes viram estados');
+  assert(url.length < 2000, `link com ${url.length} caracteres`);
+});
+
+// ── trilha
+t('trilha: cinco fases numeradas, com objetivo e entregável', () => {
+  same(PHASES.map((p) => p.num).join(), '0,1,2,3,4');
+  for (const p of PHASES) assert(p.id && p.title && p.goal && p.deliverable && p.modules.length, `fase ${p.num}`);
+});
+t('trilha: ids únicos, tipos válidos e links seguros', () => {
+  const ids = new Set();
+  for (const { item, module } of allItems()) {
+    assert(!ids.has(item.id), `id repetido: ${item.id}`);
+    ids.add(item.id);
+    assert(KINDS[item.kind], `${item.id}: tipo "${item.kind}"`);
+    if (item.kind === 'lab') assert(LABS[item.lab], `${item.id}: laboratório "${item.lab}" não está registrado`);
+    else assert(item.title, `${item.id}: título`);
+    if (item.href) assert(/^https:\/\/[a-z0-9.-]+\//.test(item.href) || /^https:\/\/[a-z0-9.-]+$/.test(item.href), `${item.id}: link ${item.href}`);
+    if (item.kind === 'aula' || item.kind === 'leitura') assert(item.href, `${item.id}: sem link`);
+    assert(module.id, 'módulo sem id');
+  }
+  same(new Set(PHASES.flatMap((p) => p.modules.map((m) => m.id))).size, PHASES.flatMap((p) => p.modules).length, 'ids de módulo');
+});
+t('trilha: todo módulo parte de um problema e termina com uma explicação', () => {
+  for (const { modules } of PHASES) {
+    for (const m of modules) {
+      assert(m.problem && m.problem.includes('?'), `${m.id}: o problema é uma pergunta`);
+      same(m.items.at(-1).kind, 'explica', `${m.id}: último item`);
+      same(m.items.filter((i) => i.kind === 'explica').length, 1, `${m.id}: uma explicação`);
+    }
+  }
+});
+t('trilha: nenhum texto cita empresa', () => {
+  const text = JSON.stringify(PHASES) + JSON.stringify(CORPORA) + Object.values(LABS).map((l) => l.blurb).join(' ');
+  assert(!/totalmix|totvs|protheus|bolamel/i.test(text), text.match(/.{0,20}(totalmix|totvs|protheus|bolamel).{0,20}/i)?.[0]);
+});
+t('laboratórios: os prontos dizem onde guardam o progresso; os planejados não têm endereço', () => {
+  const ready = Object.entries(LABS).filter(([, lab]) => lab.href);
+  same(ready.map(([id]) => id).join(), 'markov,llm');
+  for (const [id, lab] of Object.entries(LABS)) {
+    assert(lab.title && lab.blurb, `${id}: texto`);
+    if (!lab.href) { assert(!lab.progress, `${id}: planejado não tem progresso`); continue; }
+    assert(/^[a-z]+\.html$/.test(lab.href), `${id}: endereço`);
+    for (const part of lab.progress) {
+      assert(part.ids.length && new Set(part.ids).size === part.ids.length, `${id}: ids de progresso`);
+      assert(lab.storage.includes(part.key), `${id}: ${part.key} precisa entrar na cópia`);
+    }
+  }
+  same(LABS.markov.progress.reduce((n, p) => n + p.ids.length, 0), 17, 'Markov: 10 desafios e 7 etapas de aula');
+});
+
+// ── progresso
+const item = (id) => allItems().find((x) => x.item.id === id).item;
+t('progresso: marcar, desmarcar e reabrir', () => {
+  const storage = memory();
+  const trail = loadTrail(storage);
+  same(trail.checks.size, 0);
+  trail.checks.add('khan-estatistica');
+  trail.notes['explica-processos'] = 'curto';
+  assert(saveTrail(trail, storage), 'salvou');
+  const again = loadTrail(storage);
+  assert(again.checks.has('khan-estatistica'), 'marcado');
+  same(again.notes['explica-processos'], 'curto');
+  same(itemProgress(item('khan-estatistica'), again, storage), 1);
+  same(itemProgress(item('3b1b-algebra'), again, storage), 0);
+});
+t('progresso: explicação só conta com tamanho de explicação', () => {
+  const storage = memory();
+  const trail = loadTrail(storage);
+  trail.notes['explica-processos'] = 'x'.repeat(MIN_EXPLAIN - 1);
+  same(itemProgress(item('explica-processos'), trail, storage), 0);
+  trail.notes['explica-processos'] = `  ${'x'.repeat(MIN_EXPLAIN)}  `;
+  same(itemProgress(item('explica-processos'), trail, storage), 1);
+  trail.notes['explica-processos'] = ' '.repeat(500);
+  same(itemProgress(item('explica-processos'), trail, storage), 0, 'só espaços');
+});
+t('progresso: salvamento corrompido não quebra a trilha', () => {
+  for (const raw of ['{quebrado', '"x"', '{"checks":"abc","notes":[1]}', '{"checks":[1,null,"ok"],"notes":{"a":5,"b":"texto"}}']) {
+    const trail = loadTrail(memory({ [TRAIL_KEY]: raw }));
+    assert(trail.checks instanceof Set && typeof trail.notes === 'object', raw);
+    assert([...trail.checks].every((x) => typeof x === 'string'), raw);
+    assert(Object.values(trail.notes).every((x) => typeof x === 'string'), raw);
+  }
+});
+t('progresso do laboratório: lê o que o laboratório salvou, sem contar duplicado nem desconhecido', () => {
+  same(JSON.stringify(labProgress('markov', memory())), JSON.stringify({ done: 0, total: 17 }));
+  const storage = memory({
+    'markovlab:v3': { completed: ['memoryless', 'memoryless', 'run-sim', 'nao-existe'] },
+    'markovlab:course': { done: ['basico'] },
+    [LLM_KEY]: { completed: LLM_CHALLENGES.map((c) => c.id) },
+  });
+  same(labProgress('markov', storage).done, 3);
+  same(JSON.stringify(labProgress('llm', storage)), JSON.stringify({ done: LLM_CHALLENGES.length, total: LLM_CHALLENGES.length }));
+  same(itemProgress(item('lab-llm'), loadTrail(storage), storage), 1);
+  same(JSON.stringify(labProgress('vetores', storage)), JSON.stringify({ done: 0, total: 0 }), 'planejado');
+  same(labProgress('markov', memory({ 'markovlab:v3': '{quebrado' })).done, 0, 'corrompido');
+});
+t('progresso da fase: laboratório planejado não entra na conta', () => {
+  const storage = memory();
+  const trail = loadTrail(storage);
+  const fase0 = PHASES[0];
+  const countable = fase0.modules.flatMap((m) => m.items).filter((i) => !(i.kind === 'lab' && !LABS[i.lab].href)).length;
+  same(phaseProgress(fase0, trail, storage).total, countable);
+  same(phaseProgress(fase0, trail, storage).fraction, 0);
+  const all = overallProgress(trail, storage);
+  same(all.done, 0);
+  assert(all.total > 30, `total ${all.total}`);
+});
+t('progresso: uma fase inteira feita vale 1', () => {
+  const storage = memory();
+  const trail = loadTrail(storage);
+  for (const i of PHASES[4].modules.flatMap((m) => m.items)) {
+    if (i.kind === 'explica') trail.notes[i.id] = 'x'.repeat(MIN_EXPLAIN);
+    else trail.checks.add(i.id);
+  }
+  same(phaseProgress(PHASES[4], trail, storage).fraction, 1);
+});
+t('próximo passo: o primeiro item aberto, na ordem; pula laboratório planejado', () => {
+  const storage = memory();
+  const trail = loadTrail(storage);
+  same(nextStep(trail, storage).item.id, 'lab-markov');
+  storage.setItem('markovlab:v3', JSON.stringify({ completed: LABS.markov.progress[0].ids }));
+  storage.setItem('markovlab:course', JSON.stringify({ done: LABS.markov.progress[1].ids }));
+  same(nextStep(trail, storage).item.id, 'khan-estatistica');
+  trail.checks.add('khan-estatistica');
+  trail.notes['explica-processos'] = 'x'.repeat(MIN_EXPLAIN);
+  trail.checks.add('3b1b-algebra');
+  same(nextStep(trail, storage).item.id, 'explica-vetores', 'o laboratório de vetores ainda não existe');
+});
+t('cópia: leva tudo e traz de volta em outro navegador', () => {
+  const from = memory({ [TRAIL_KEY]: { checks: ['lgpd'], notes: {} }, [LLM_KEY]: { completed: ['janela'] }, 'markovlab:v3': { level: 2 }, 'outra-coisa': 'não é do caderno' });
+  const file = exportAll(from);
+  same(file.format, 'caderno-ia');
+  assert(!('outra-coisa' in file.data), 'só as chaves do caderno');
+  const to = memory();
+  same(importAll(JSON.parse(JSON.stringify(file)), to), 3, 'chaves restauradas');
+  assert(loadTrail(to).checks.has('lgpd'), 'trilha');
+  same(labProgress('llm', to).done, 1, 'laboratório');
+});
+t('cópia: recusa arquivo de outro tipo e ignora chave estranha', () => {
+  throws(() => importAll({ foo: 1 }, memory()), /não é uma cópia/);
+  throws(() => importAll(null, memory()), /não é uma cópia/);
+  throws(() => importAll({ format: 'caderno-ia', data: { 'chave-alheia': '{}', [TRAIL_KEY]: '{quebrado' } }, memory()), /nada que este caderno reconheça/);
+  const to = memory();
+  importAll({ format: 'caderno-ia', data: { [TRAIL_KEY]: '{"checks":[]}', 'chave-alheia': '{"x":1}', [LLM_KEY]: 5 } }, to);
+  same(to.size(), 1, 'só a chave conhecida e válida entra');
+});
+
+for (const run of pending) await run();
+out.innerHTML += `\n<b class="${failed ? 'fail' : 'pass'}">${passed} passaram, ${failed} falharam</b>`;
+document.title = failed ? `FALHOU (${failed})` : `OK (${passed})`;
+if (new URLSearchParams(location.search).has('report')) {
+  fetch('/__report', { method: 'POST', body: JSON.stringify({ passed, failed, failures }) });
+}
+</script>
+</body>
+</html>

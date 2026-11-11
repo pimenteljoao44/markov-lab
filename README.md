@@ -1,12 +1,51 @@
-# Laboratório de Markov
+# Caderno de IA aplicada
+
+Uma trilha para estudar IA do processo aleatório ao agente governado, com laboratórios interativos no navegador. Cada módulo parte de um problema de trabalho, passa por um laboratório ou por algo que você constrói, e termina com você explicando o assunto por escrito.
+
+Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do que você digita ou cola sai do seu computador, e a página só fala com outro site se você clicar para assistir a uma aula no YouTube ou abrir um link de leitura.
+
+## O que tem aqui
+
+| Página | O que é |
+|---|---|
+| **Trilha** (`index.html`) | As cinco fases, o próximo passo e o seu progresso. É a página inicial. |
+| **Laboratório de Markov** (`markov.html`) | Modele qualquer processo como estados e chances, simule e pergunte ao modelo. |
+| **Do Markov ao LLM** (`llm.html`) | Treine um modelo de linguagem contando palavras e veja temperatura, top-k e top-p mudarem o sorteio. |
+
+### A trilha
+
+| Fase | Assunto | Ao final |
+|---|---|---|
+| 0 | Matemática que sustenta decisão | Desmontar um número de fornecedor: de onde veio, com que amostra, medido por quem |
+| 1 | Como um LLM funciona | Glossário aplicado ao seu trabalho |
+| 2 | Construir: RAG, agentes e MCP | Agente piloto, somente leitura, sobre dados de teste |
+| 3 | Governar: segurança e conformidade | Rascunho de política de governança de agentes |
+| 4 | Levar para as pessoas | Plano de capacitação por papel |
+
+O progresso fica guardado só no navegador. **Guardar cópia**, na trilha, gera um arquivo para levar a outro computador.
+
+Os laboratórios de vetores, descida de gradiente, recuperação, laço do agente e permissões aparecem na trilha como "em construção" e entram um por vez. O código das fases 2 em diante é escrito em Python, no ambiente de verdade: a trilha diz o que precisa ficar pronto e você marca quando ficou.
+
+### Do Markov ao LLM
+
+Um modelo de linguagem pequeno o bastante para conferir à mão. Ele lê um texto, conta o que vem depois de cada contexto e sorteia o próximo token.
+
+- **Barras do próximo token**: o contorno é o que a contagem diz; o preenchimento é de onde o sorteio sai depois dos ajustes. Clique numa barra para escolher o token você mesmo.
+- **Temperatura, top-k, top-p e semente**: os mesmos ajustes de um LLM comercial.
+- **Contexto de 1, 2 ou 3 tokens**: mais contexto deixa o texto coerente e, com pouco texto de treino, vira recitação.
+- **Contexto nunca visto**: escreva um começo que o modelo não conhece e veja ele responder do mesmo jeito, em caneta vermelha. É o mecanismo da alucinação.
+- **Ponte**: com contexto de 1, o modelo abre como cadeia no Laboratório de Markov.
+- 7 desafios e um Caderno de teoria com 24 conceitos, sempre com os números do modelo aberto.
+
+Três textos de treino prontos, ou cole o seu. Não cole dados pessoais nem informação confidencial: o texto fica salvo no navegador.
+
+## Laboratório de Markov
 
 Um caderno interativo para **modelar qualquer problema** com cadeias de Markov: clientes, alunos, máquinas, pacientes, jogos. Balões explicam a teoria enquanto você usa, sempre com os nomes do seu modelo.
 
 ![Laboratório de Markov com um funil de vendas: potes enchendo, bolinhas nas setas e um balão explicando o nível do pote](docs/screenshot.jpg)
 
-Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do que você digita ou cola sai do seu computador, e a página só fala com outro site se você clicar para assistir a uma aula no YouTube.
-
-## O que dá para fazer
+### O que dá para fazer
 
 **Assistir antes de praticar.** O botão **Aulas** reúne uma trilha de videoaulas gratuitas em português, em 7 etapas, com o que praticar no app depois de cada uma. O Caderno de teoria também aponta o trecho de aula que explica cada conceito, quando há um.
 
@@ -32,7 +71,7 @@ Ou comece por um dos 23 modelos da galeria: funil de vendas, vida de um assinant
 
 ## Como rodar
 
-O projeto usa módulos JavaScript, que exigem um servidor local (abrir o `index.html` com dois cliques não funciona). Qualquer servidor estático serve; com Python:
+O projeto usa módulos JavaScript, que exigem um servidor local (abrir um arquivo `.html` com dois cliques não funciona). Qualquer servidor estático serve; com Python:
 
 ```bash
 python -m http.server 5173
@@ -48,7 +87,7 @@ Não há etapa de build. No repositório, vá em **Settings → Pages**, escolha
 
 ## Formato do arquivo de modelo
 
-**Arquivo → Exportar arquivo** gera um JSON que pode ser reaberto em **Importar arquivo** ou versionado. Só `states` e `matrix` são obrigatórios:
+No Laboratório de Markov, **Arquivo → Exportar arquivo** gera um JSON que pode ser reaberto em **Importar arquivo** ou versionado. Só `states` e `matrix` são obrigatórios:
 
 ```json
 {
@@ -63,6 +102,8 @@ Não há etapa de build. No repositório, vá em **Settings → Pages**, escolha
 
 ## Atalhos de teclado
 
+No Laboratório de Markov:
+
 | Tecla | O que faz |
 |---|---|
 | `Ctrl+Z`, `Ctrl+Y` | Desfaz e refaz a última mudança no modelo |
@@ -73,24 +114,31 @@ Não há etapa de build. No repositório, vá em **Settings → Pages**, escolha
 | `←` `→` `↑` `↓` | A partir de um pote, percorre as setas que saem dele; `Esc` volta ao pote |
 | `Shift` + setas | Move o pote em foco |
 
+No laboratório de LLM, `Espaço` sorteia o próximo token e `Enter` gera a frase.
+
 ## Limites
 
 - Até 10 estados por modelo. Em dados com mais do que isso, os estados mais raros são reunidos em "Outros".
 - O modelo assume que as chances não mudam com o tempo (cadeia homogênea) e que o estado atual basta para prever o próximo. O Caderno de teoria mostra como contornar isso.
 - Um modelo é uma simplificação: confira se ele acerta o que você já sabe antes de usá-lo para decidir algo.
+- O modelo de linguagem do laboratório conta palavras; um LLM de verdade usa uma rede neural com bilhões de parâmetros. O sorteio é o mesmo, a qualidade do texto não.
 
 ## Como o código está organizado
 
+O padrão de código, de design e de texto, e o passo a passo para criar um laboratório, estão em [`docs/PADRAO.md`](docs/PADRAO.md).
+
 | Pasta | Conteúdo |
 |---|---|
-| `js/math/` | Motor sem dependências de interface: classificação da cadeia, π, absorção, tempos de chegada e estimativa a partir de dados |
-| `js/learn/` | Trilha de aulas: vídeos, etapas e o trecho que explica cada conceito |
+| `js/platform/` | O que é comum a todos: a trilha (`syllabus.js`), o progresso, o registro de laboratórios, o store mínimo, o caderno de teoria e o dock de desafios |
+| `js/llm/` | Laboratório de LLM: motor de n-gramas e de sorteio, estado, desafios, caderno e componentes |
+| `js/math/` | Motor do Laboratório de Markov, sem dependências de interface: classificação da cadeia, π, absorção, tempos de chegada e estimativa a partir de dados |
+| `js/learn/` | Trilha de aulas do Laboratório de Markov: vídeos, etapas e o trecho que explica cada conceito |
 | `js/models/` | Validação de modelos importados, catálogo da galeria, link compartilhável e histórico de desfazer |
 | `js/coach/` | Balões: catálogo de teoria (`tips.js`), quando cada um aparece (`triggers.js`) e exibição (`Coach.js`) |
 | `js/components/` | Diagrama (SVG e D3), bolinhas (Canvas), matriz, assistente, painéis e desafios |
 | `js/levels/`, `js/challenges/` | Conteúdo dos três níveis e dos desafios |
-| `js/store.js`, `js/vocab.js` | Estado único da aplicação e vocabulário do modelo aberto |
-| `css/` | Estilos; `mobile.css` reúne o que muda em celular e telas de toque |
+| `js/store.js`, `js/vocab.js` | Estado único do Laboratório de Markov e vocabulário do modelo aberto |
+| `css/` | Estilos; `tokens.css` tem as cores e fontes, `trail.css` e `llm.css` o que é próprio de cada página, `mobile.css` o que muda em celular e telas de toque |
 | `vendor/` | Bibliotecas e fontes incluídas no projeto: [D3](https://d3js.org) para o diagrama e os gráficos, [KaTeX](https://katex.org) para as fórmulas e a família Atkinson Hyperlegible. Versões e licenças em [`vendor/README.md`](vendor/README.md) |
 
 ## Testes
@@ -103,7 +151,11 @@ python tests/run.py
 
 A cada `push` ou pull request no GitHub, o mesmo comando roda em `.github/workflows/tests.yml`.
 
-Para ver os testes no navegador, abra as duas páginas com o servidor rodando. O título da aba mostra `OK` ou `FALHOU`:
+Para ver os testes no navegador, abra as páginas com o servidor rodando. O título da aba mostra `OK` ou `FALHOU`:
 
-- http://localhost:5173/tests/math.test.html testa o motor matemático, a leitura de dados, a validação de arquivos, o desfazer, o link compartilhado, o quiz e todos os modelos da galeria.
-- http://localhost:5173/tests/app.test.html abre o app numa janela e percorre os fluxos da interface: links, desfazer, rascunho do assistente, importação de CSV, teclado, contraste, celular e falhas ao carregar. Leva menos de um minuto. Os dados salvos no navegador são guardados antes e recolocados no fim; deixe a aba em primeiro plano até terminar.
+- http://localhost:5173/tests/math.test.html testa o motor do Laboratório de Markov, a leitura de dados, a validação de arquivos, o desfazer, o link compartilhado, o quiz e todos os modelos da galeria.
+- http://localhost:5173/tests/platform.test.html testa a trilha, o progresso, a cópia de segurança e o motor do laboratório de LLM: contagem, temperatura, top-k, top-p, sorteio e a ponte para o Laboratório de Markov.
+- http://localhost:5173/tests/app.test.html abre o Laboratório de Markov numa janela e percorre os fluxos da interface: links, desfazer, rascunho do assistente, importação de CSV, teclado, contraste, celular e falhas ao carregar.
+- http://localhost:5173/tests/pages.test.html faz o mesmo com a trilha e o laboratório de LLM.
+
+Os testes de fluxo levam cerca de um minuto cada. Os dados salvos no navegador são guardados antes e recolocados no fim; deixe a aba em primeiro plano até terminar.

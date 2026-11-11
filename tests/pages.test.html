@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Testes da trilha e do laboratório de LLM</title>
+<style>
+  body { background:#f8fafd; color:#1f2a44; font:14px/1.6 ui-monospace, Consolas, monospace; padding:24px; }
+  .pass { color:#12a150 } .fail { color:#e5383b; font-weight:700 } h1 { font-size:16px }
+  iframe { border:1px solid #c9d4e3; display:block; margin-top:16px; }
+</style>
+</head>
+<body>
+<h1>Trilha e laboratório de LLM: testes dos fluxos (as páginas rodam na janela abaixo)</h1>
+<p>Os dados salvos neste navegador são guardados antes dos testes e recolocados no fim.</p>
+<pre id="out"></pre>
+<div id="stage"></div>
+<script type="module">
+import { encodeShare } from '../js/models/share.js';
+import { TRAIL_KEY, MIN_EXPLAIN } from '../js/platform/progress.js';
+import { LLM_KEY } from '../js/llm/state.js';
+import { EOS } from '../js/llm/ngram.js';
+
+const NOTEBOOK = 'llmlab:caderno';
+const KEYS = [TRAIL_KEY, LLM_KEY, NOTEBOOK, 'markovlab:v3', 'markovlab:course', 'markovlab:coach'];
+const BASE = new URL('../', location.href).href;
+const out = document.getElementById('out');
+const backup = Object.fromEntries(KEYS.map((k) => [k, localStorage.getItem(k)]));
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, what = 'condição', ms = 5000) {
+  const end = performance.now() + ms;
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (performance.now() > end) throw new Error(`esperei demais por: ${what}`);
+    await sleep(20);
+  }
+}
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function assert(c, msg = 'falhou') { if (!c) throw new Error(msg); }
+function same(a, b, label = 'valor') { assert(a === b, `${label}: veio "${a}", esperado "${b}"`); }
+
+let frame = null;
+const win = () => frame.contentWindow;
+const doc = () => frame.contentDocument;
+const $ = (sel) => doc().querySelector(sel);
+const $$ = (sel) => [...doc().querySelectorAll(sel)];
+const text = (sel) => $(sel)?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+const saved = (key) => JSON.parse(localStorage.getItem(key));
+const ready = () => until(() => doc()?.documentElement.dataset.ready === '1', 'a página ficar pronta', 15000);
+
+/** Abre uma página do zero, com os dados salvos pedidos. */
+async function boot(page, { storage = {}, width = 1280, height = 800, hash = '' } = {}) {
+  frame?.remove();
+  await sleep(0);
+  for (const k of KEYS) localStorage.removeItem(k);
+  localStorage.setItem('markovlab:coach', JSON.stringify({ enabled: false, seen: [] }));
+  for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, JSON.stringify(v));
+  frame = document.createElement('iframe');
+  frame.src = `${BASE}${page}${hash}`;
+  frame.style.width = `${width}px`;
+  frame.style.height = `${height}px`;
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  document.getElementById('stage').appendChild(frame);
+  await loaded;
+}
+
+/** Recarrega como F5, sem esperar o salvamento automático. */
+async function reload() {
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  win().location.reload();
+  await loaded;
+  await ready();
+}
+
+function type(el, value) {
+  el.value = value;
+  el.dispatchEvent(new (win().Event)('input', { bubbles: true }));
+}
+function slide(key, value) {
+  type($(`[data-set="${key}"]`), String(value));
+}
+const generated = () => $$('#gen-line .tk-chip:not(.given)').map((c) => c.textContent);
+const bars = () => $$('.nt-row');
+const noOverflow = () => assert(doc().documentElement.scrollWidth <= doc().documentElement.clientWidth + 1, `a página passa da largura: ${doc().documentElement.scrollWidth} em ${doc().documentElement.clientWidth}`);
+function namedControls() {
+  for (const el of $$('button, a[href], input, textarea, select')) {
+    if (el.closest('[hidden]') || el.type === 'hidden') continue;
+    const name = el.getAttribute('aria-label') || el.textContent.trim() || el.labels?.[0]?.textContent.trim() || el.getAttribute('title') || el.getAttribute('placeholder');
+    assert(name, `controle sem nome: ${el.outerHTML.slice(0, 90)}`);
+  }
+}
+function externalRequests() {
+  const external = win().performance.getEntriesByType('resource').map((r) => r.name).filter((u) => new URL(u).origin !== win().location.origin);
+  same(external.length, 0, `pedidos externos (${external.join(', ')})`);
+}
+
+const TESTS = [
+  // ── 1. Trilha
+  ['trilha: abre com as cinco fases, sem falar com outro site', async () => {
+    await boot('index.html');
+    await ready();
+    same($$('.phase').length, 5, 'fases');
+    assert($$('.item').length > 30, 'itens');
+    same(text('.total-pct'), '0%', 'progresso');
+    assert(/Laboratório de Markov/.test(text('.next-title')), text('.next-title'));
+    await doc().fonts.ready;
+    externalRequests();
+    assert(!$('#boot-error'), 'sem mensagem de erro');
+    namedControls();
+  }],
+  ['trilha: marcar um item muda o progresso e sobrevive a recarregar', async () => {
+    await boot('index.html');
+    await ready();
+    const box = $('[data-check="khan-estatistica"]');
+    box.click();
+    assert($('[data-item="khan-estatistica"]').classList.contains('done'), 'item marcado');
+    assert(text('.total-pct') !== '0%', 'progresso geral');
+    assert(saved(TRAIL_KEY).checks.includes('khan-estatistica'), 'salvo na hora');
+    await reload();
+    assert($('[data-check="khan-estatistica"]').checked, 'continua marcado');
+    $('[data-check="khan-estatistica"]').click();
+    same(text('.total-pct'), '0%', 'desmarcar devolve o progresso');
+  }],
+  ['trilha: explicação curta não conta; a completa conta e não se perde ao recarregar', async () => {
+    await boot('index.html');
+    await ready();
+    const note = $('[data-note="explica-processos"]');
+    type(note, 'Porque sim.');
+    assert(!$('[data-item="explica-processos"]').classList.contains('done'), 'curta não conta');
+    assert(/Mais \d+ caracteres/.test(text('[data-item="explica-processos"] [data-note-count]')), 'diz quanto falta');
+    const full = 'Com 20 sorteios o acaso domina o resultado; com 2.000 a fração observada fica perto da chance real.';
+    assert(full.length >= MIN_EXPLAIN, 'texto de teste');
+    type(note, full);
+    assert($('[data-item="explica-processos"]').classList.contains('done'), 'completa conta');
+    same(doc().activeElement === note || doc().activeElement === doc().body, true, 'escrever não joga o foco para outro lugar');
+    await reload(); // sem esperar o salvamento automático
+    same($('[data-note="explica-processos"]').value, full, 'texto guardado');
+  }],
+  ['trilha: mostra o progresso que o laboratório salvou', async () => {
+    await boot('index.html', { storage: { 'markovlab:v3': { completed: ['memoryless', 'run-sim'] }, 'markovlab:course': { done: ['basico'] } } });
+    await ready();
+    assert(/^3 de 17/.test(text('[data-item="lab-markov"] [data-lab-count]')), text('[data-item="lab-markov"] [data-lab-count]'));
+    assert(/^0 de 7/.test(text('[data-item="lab-llm"] [data-lab-count]')), text('[data-item="lab-llm"] [data-lab-count]'));
+    same($('[data-item="lab-markov"] [data-open]').getAttribute('href'), 'markov.html', 'link do laboratório');
+    assert(!$('[data-item="lab-vetores"] [data-open]'), 'laboratório planejado não tem botão de abrir');
+  }],
+  ['trilha: "Ir para lá" leva ao próximo passo', async () => {
+    await boot('index.html');
+    await ready();
+    $('[data-goto]').click();
+    assert($('[data-item="lab-markov"]').classList.contains('spot'), 'item destacado');
+    same(doc().activeElement, $('[data-item="lab-markov"] [data-open]'), 'foco no botão de abrir');
+  }],
+  ['trilha: link de modelo antigo segue para o Laboratório de Markov', async () => {
+    const chain = { meta: { title: 'Link antigo', unit: 'cliente', step: 'mês' }, states: [{ label: 'Ativo' }, { label: 'Saiu' }], matrix: [[0.9, 0.1], [0, 1]] };
+    await boot('index.html', { hash: encodeShare(chain) });
+    await until(() => win().location.pathname.endsWith('/markov.html') && $('#model-title')?.textContent === 'Link antigo', 'o modelo abrir no Laboratório de Markov', 15000);
+  }],
+  ['trilha: cabe na tela de um celular', async () => {
+    await boot('index.html', { width: 360, height: 700 });
+    await ready();
+    noOverflow();
+    const box = $('[data-check="khan-estatistica"]').getBoundingClientRect();
+    assert(box.width >= 24 && box.height >= 24, `alvo de toque de ${box.width}×${box.height}`);
+  }],
+  ['Laboratório de Markov: tem o caminho de volta para a trilha', async () => {
+    await boot('markov.html', { storage: { 'markovlab:v3': { level: 3 } } });
+    await until(() => $('#model-title')?.textContent, 'o laboratório abrir', 15000);
+    same($('.top-actions a.text-btn').getAttribute('href'), 'index.html');
+  }],
+
+  // ── 2. Laboratório de LLM
+  ['LLM: abre treinado, com as barras do próximo token, sem falar com outro site', async () => {
+    await boot('llm.html');
+    await ready();
+    same(text('#model-title'), 'Vida de um pedido', 'texto de treino');
+    assert(bars().length >= 4, 'barras');
+    same($('#prompt').value, 'o pedido foi', 'começo');
+    same($$('#gen-line .tk-chip.given').length, 3, 'tokens do começo');
+    assert(/Contexto reconhecido/.test(text('#panel-context')), text('#panel-context'));
+    await until(() => win().katex, 'o KaTeX carregar');
+    await doc().fonts.ready;
+    externalRequests();
+    assert(!$('#boot-error'), 'sem mensagem de erro');
+    namedControls();
+  }],
+  ['LLM: sortear acrescenta um token por vez', async () => {
+    await boot('llm.html');
+    await ready();
+    $('[data-step]').click();
+    same(generated().length, 1, 'um token');
+    $('[data-step]').click();
+    same(generated().length, 2, 'dois tokens');
+    assert(!$('[data-clear]').disabled, 'dá para apagar');
+    $('[data-clear]').click();
+    same(generated().length, 0, 'apagado');
+  }],
+  ['LLM: a mesma semente gera a mesma frase; apagar e gerar de novo não muda nada', async () => {
+    await boot('llm.html');
+    await ready();
+    $('[data-run]').click();
+    const first = generated().join(' ');
+    assert(first.endsWith(EOS), `a frase termina no token de fim: ${first}`);
+    assert(/A frase terminou/.test(text('#gen-next')), 'avisa que terminou');
+    assert($('[data-step]').disabled, 'não há o que sortear depois do fim');
+    $('[data-clear]').click();
+    $('[data-run]').click();
+    same(generated().join(' '), first, 'mesma semente');
+    $('[data-run]').click();
+    same(generated().join(' '), first, 'gerar de novo');
+  }],
+  ['LLM: temperatura 0 deixa um token só no sorteio e ignora a semente', async () => {
+    await boot('llm.html');
+    await ready();
+    slide('temperature', 0);
+    same(bars().filter((b) => !b.disabled).length, 1, 'no sorteio');
+    same(text('[data-out="temperature"]'), '0,0', 'mostrador');
+    $('[data-run]').click();
+    const first = generated().join(' ');
+    $('[data-seed]').click();
+    same(generated().join(' '), first, 'outra semente, mesma frase');
+  }],
+  ['LLM: top-k e top-p tiram tokens do sorteio sem escondê-los', async () => {
+    await boot('llm.html');
+    await ready();
+    const all = bars().length;
+    slide('topK', 3);
+    same(bars().filter((b) => !b.disabled).length, 3, 'top-k');
+    same(bars().length, all, 'os cortados continuam à vista');
+    slide('topK', 0);
+    slide('topP', 0.3);
+    const kept = bars().filter((b) => !b.disabled).length;
+    assert(kept >= 1 && kept < all, `top-p deixou ${kept} de ${all}`);
+    assert(/fora/.test(text('.nt-row.cut .nt-val')), 'cortado diz que está fora');
+  }],
+  ['LLM: clicar numa barra escolhe aquele token', async () => {
+    await boot('llm.html');
+    await ready();
+    const pick = bars()[2];
+    const token = pick.dataset.token;
+    pick.click();
+    same(generated().join(' '), token, 'token escolhido');
+    assert($('#gen-line .tk-chip.manual'), 'marcado como escolha da pessoa');
+  }],
+  ['LLM: começo desconhecido mostra o aviso de contexto nunca visto', async () => {
+    await boot('llm.html');
+    await ready();
+    type($('#prompt'), 'o pedido foi xilofone');
+    assert(/nunca viu este contexto/.test(text('#panel-context .ctx-warn')), text('#panel-context'));
+    $('[data-step]').click();
+    assert($('#gen-line .tk-chip.invented'), 'token inventado em caneta vermelha');
+    same(text('#panel-measures .ms-row:last-child dd').startsWith('1'), true, 'conta os tokens sem base');
+  }],
+  ['LLM: digitar no começo não perde o foco nem o cursor', async () => {
+    await boot('llm.html');
+    await ready();
+    const input = $('#prompt');
+    input.focus();
+    type(input, 'a nota');
+    same(doc().activeElement, input, 'foco');
+    same(input.value, 'a nota', 'texto');
+    same($$('#gen-line .tk-chip.given').map((c) => c.textContent).join(' '), 'a nota', 'tokens');
+  }],
+  ['LLM: contexto maior muda o modelo e apaga o que foi gerado', async () => {
+    await boot('llm.html');
+    await ready();
+    $('[data-run]').click();
+    $('[data-order="3"]').click();
+    same(generated().length, 0, 'texto gerado apagado');
+    same($('[data-order="3"]').getAttribute('aria-pressed'), 'true', 'botão marcado');
+    assert(/conjunto dos últimos 3/.test(text('#panel-bridge')), text('#panel-bridge'));
+    assert(!$('[data-bridge]'), 'a ponte só existe com contexto de 1');
+    $('[data-run]').click();
+    assert(/^100%/.test(text('#panel-measures .ms-row:nth-child(4) dd')), `cópia do texto: ${text('#panel-measures .ms-row:nth-child(4) dd')}`);
+  }],
+  ['LLM: por letra, cada letra vira um token', async () => {
+    await boot('llm.html');
+    await ready();
+    $('[data-mode="char"]').click();
+    same($$('#gen-line .tk-chip.given').map((c) => c.textContent).join(''), 'o␣pedido␣foi', 'tokens do começo');
+    assert(bars().every((b) => [...b.dataset.token].length === 1 || b.dataset.token === EOS), 'barras de uma letra');
+  }],
+  ['LLM: "?" abre o caderno no conceito e conta como lido', async () => {
+    await boot('llm.html');
+    await ready();
+    same(text('#nb-count'), '0/24', 'contador');
+    $('#simbar [data-tip="temperatura"]').click();
+    const dlg = await until(() => $('dialog.notebook[open]'), 'o caderno abrir');
+    assert(dlg.querySelector('details[data-id="temperatura"]').open, 'conceito aberto');
+    await until(() => dlg.querySelector('details[data-id="temperatura"] .katex'), 'a fórmula aparecer');
+    same(text('#nb-count'), '1/24', 'contador depois de ler');
+    assert(saved(NOTEBOOK).seen.includes('temperatura'), 'salvo');
+    type(dlg.querySelector('[data-filter]'), 'top-');
+    same([...dlg.querySelectorAll('details')].filter((d) => !d.hidden).length, 2, 'filtro');
+    dlg.querySelector('[data-close]').click();
+    assert(!$('dialog.notebook[open]'), 'fecha');
+  }],
+  ['LLM: trocar o texto treina outro modelo', async () => {
+    await boot('llm.html');
+    await ready();
+    $('#btn-corpus').click();
+    const dlg = await until(() => $('dialog.corpus[open]'), 'a janela abrir');
+    assert(dlg.querySelector('[data-use]').disabled, 'sem texto colado, não dá para usar');
+    dlg.querySelector('[data-corpus="proverbios"]').click();
+    same(text('#model-title'), 'Provérbios', 'texto de treino');
+    same($('#prompt').value, 'quem', 'começo sugerido');
+    await until(() => $('.toast.ok'), 'o aviso');
+  }],
+  ['LLM: texto colado curto demais é recusado; um suficiente treina e fica salvo', async () => {
+    await boot('llm.html');
+    await ready();
+    $('#btn-corpus').click();
+    const dlg = await until(() => $('dialog.corpus[open]'), 'a janela abrir');
+    const area = dlg.querySelector('#corpus-text');
+    type(area, 'Só uma frase curta.');
+    assert(dlg.querySelector('[data-use]').disabled, 'curto demais');
+    assert(/ainda é pouco/.test(dlg.querySelector('[data-status]').textContent), dlg.querySelector('[data-status]').textContent);
+    type(area, Array.from({ length: 8 }, (_, i) => `O gato ${i % 2 ? 'preto' : 'branco'} subiu no telhado da casa <b>${i}</b>.`).join('\n'));
+    assert(!dlg.querySelector('[data-use]').disabled, 'suficiente');
+    dlg.querySelector('[data-use]').click();
+    same(text('#model-title'), 'Meu texto', 'texto de treino');
+    assert(!doc().querySelector('#gen-next .nt-token b'), 'marcação do texto colado não vira HTML');
+    await reload();
+    same(text('#model-title'), 'Meu texto', 'continua depois de recarregar');
+  }],
+  ['LLM: ajustes sobrevivem a recarregar logo depois de mexer', async () => {
+    await boot('llm.html');
+    await ready();
+    slide('temperature', 0.4);
+    $('[data-order="2"]').click();
+    await reload(); // sem esperar o salvamento automático
+    same(text('[data-out="temperature"]'), '0,4', 'temperatura');
+    same($('[data-order="2"]').getAttribute('aria-pressed'), 'true', 'contexto');
+  }],
+  ['LLM: salvamento corrompido não impede de abrir', async () => {
+    await boot('llm.html');
+    localStorage.setItem(LLM_KEY, '{quebrado');
+    localStorage.setItem(NOTEBOOK, '[[[');
+    await reload();
+    same(text('#model-title'), 'Vida de um pedido');
+    assert(bars().length >= 4, 'barras');
+  }],
+  ['LLM: acertar o quiz conclui o desafio e a trilha passa a contar', async () => {
+    await boot('llm.html');
+    await ready();
+    const options = $$('.quiz-opts button');
+    options[0].click();
+    assert(options[0].classList.contains('wrong') && text('[data-explain]'), 'errada explica o erro');
+    $$('.quiz-opts button')[1].click();
+    await until(() => $('.ch-num.done'), 'o desafio ficar concluído');
+    assert(/cadeia de Markov/.test(text('.ch-desc')), 'mostra o que foi aprendido');
+    await until(() => saved(LLM_KEY)?.completed?.includes('janela'), 'salvar');
+    await boot('index.html', { storage: { [LLM_KEY]: saved(LLM_KEY) } });
+    await ready();
+    assert(/^1 de 7/.test(text('[data-item="lab-llm"] [data-lab-count]')), text('[data-item="lab-llm"] [data-lab-count]'));
+  }],
+  ['LLM: desafio de temperatura 0 se conclui gerando duas vezes', async () => {
+    await boot('llm.html', { storage: { [LLM_KEY]: { completed: ['janela'], active: 'deterministico' } } });
+    await ready();
+    assert(/Mesma entrada/.test(text('.ch-title h3')), text('.ch-title h3'));
+    slide('temperature', 0);
+    $('[data-run]').click();
+    assert(/1 frase gerada de 2/.test(text('[data-live]')), text('[data-live]'));
+    $('[data-seed]').click();
+    await until(() => $('.ch-num.done'), 'o desafio ficar concluído');
+  }],
+  ['LLM: a ponte abre o modelo como cadeia no Laboratório de Markov', async () => {
+    await boot('llm.html');
+    await ready();
+    const link = $('[data-bridge]');
+    assert(link.getAttribute('href').startsWith('markov.html#m='), 'endereço');
+    link.click();
+    await until(() => win().location.pathname.endsWith('/markov.html') && /^Tokens de/.test($('#model-title')?.textContent || ''), 'a cadeia abrir', 15000);
+    assert(saved(LLM_KEY).bridged, 'a travessia fica registrada');
+    assert(doc().querySelectorAll('g.node').length >= 2, 'potes no diagrama');
+  }],
+  ['LLM: cabe na tela de um celular', async () => {
+    await boot('llm.html', { width: 360, height: 700 });
+    await ready();
+    noOverflow();
+    $('[data-run]').click();
+    noOverflow();
+  }],
+  ['LLM: módulo que não carrega mostra uma mensagem', async () => {
+    frame?.remove();
+    const html = await (await fetch(`${BASE}llm.html`)).text();
+    frame = document.createElement('iframe');
+    frame.srcdoc = html.replace('<head>', `<head><base href="${BASE}">`).replace('src="js/llm/main.js"', 'src="js/llm/nao-existe.js"');
+    frame.style.width = '1280px';
+    frame.style.height = '800px';
+    const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+    document.getElementById('stage').appendChild(frame);
+    await loaded;
+    const box = await until(() => $('#boot-error'), 'a mensagem');
+    same(box.getAttribute('role'), 'alert', 'papel');
+  }],
+];
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+try {
+  for (const [name, fn] of TESTS) {
+    try {
+      await fn();
+      passed++;
+      out.innerHTML += `<span class="pass">✓ ${esc(name)}</span>\n`;
+    } catch (e) {
+      failed++;
+      failures.push(`${name}: ${e.message}`);
+      out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`;
+    }
+  }
+} finally {
+  frame?.remove();
+  await sleep(50);
+  for (const [k, v] of Object.entries(backup)) {
+    if (v === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, v);
+  }
+}
+out.innerHTML += `\n<b class="${failed ? 'fail' : 'pass'}">${passed} passaram, ${failed} falharam</b>`;
+document.title = failed ? `FALHOU (${failed})` : `OK (${passed})`;
+if (new URLSearchParams(location.search).has('report')) {
+  fetch('/__report', { method: 'POST', body: JSON.stringify({ passed, failed, failures }) });
+}
+</script>
+</body>
+</html>

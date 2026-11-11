@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Do Markov ao LLM: como um modelo escolhe a próxima palavra</title>
+  <meta name="description" content="Treine um modelo de linguagem contando palavras e veja temperatura, top-k e top-p mudarem o sorteio do próximo token.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <script defer src="vendor/katex/katex.min.js"></script>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/coach.css">
+  <link rel="stylesheet" href="css/studio.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/llm.css">
+  <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Do Markov ao LLM</h1>
+        <p>o próximo token só depende do contexto</p>
+      </div>
+      <p class="phase-tag"><b>Fase 1</b> Como um LLM funciona</p>
+      <nav class="top-actions" aria-label="Navegação do caderno">
+        <a class="text-btn" href="index.html">Trilha</a>
+        <a class="text-btn" href="markov.html">Laboratório de Markov</a>
+        <button class="text-btn" id="btn-notebook" title="Todos os conceitos deste laboratório, em um lugar só">Caderno de teoria <span class="nb-count" id="nb-count"></span></button>
+      </nav>
+    </header>
+
+    <main class="workspace">
+      <section class="stage">
+        <div class="model-bar">
+          <div class="mb-info">
+            <h2 id="model-title"></h2>
+            <p id="model-sub"></p>
+          </div>
+          <div class="mb-actions">
+            <button class="btn btn-sm btn-marker" id="btn-corpus">Trocar texto</button>
+          </div>
+        </div>
+        <div class="lesson">
+          <h2>Um modelo de linguagem faz uma coisa só</h2>
+          <p>Olha para os últimos tokens e diz a chance de cada próximo. O resto é sorteio. Mexa nos ajustes e veja a frase mudar.</p>
+        </div>
+        <div class="gen-wrap" id="gen-wrap">
+          <section class="gen-sheet" id="gen-text" aria-label="Texto"></section>
+          <section class="gen-sheet" id="gen-next" aria-label="Chances do próximo token"></section>
+        </div>
+        <div class="simbar" id="simbar"></div>
+      </section>
+
+      <aside class="side" aria-label="Painéis do modelo">
+        <section class="card" id="panel-context"></section>
+        <section class="card" id="panel-measures"></section>
+        <section class="card" id="panel-bridge"></section>
+        <section class="card" id="panel-work"></section>
+      </aside>
+    </main>
+
+    <footer class="dock" id="challenge-dock"></footer>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <noscript><p style="padding:24px">Este laboratório precisa de JavaScript para funcionar.</p></noscript>
+  <script>
+    // Se os módulos não carregarem, sobraria só a moldura com botões que não respondem: melhor dizer o que houve.
+    function bootFailed() {
+      if (document.documentElement.dataset.ready || document.getElementById('boot-error')) return;
+      var box = document.createElement('div');
+      box.id = 'boot-error';
+      box.className = 'boot-error';
+      box.setAttribute('role', 'alert');
+      box.innerHTML = location.protocol === 'file:'
+        ? '<b>Este caderno precisa de um servidor local.</b> Abrir o arquivo com dois cliques não funciona. Veja “Como rodar” no README.'
+        : '<b>Não foi possível carregar o laboratório.</b> Recarregue a página com Ctrl+Shift+R. Se o problema continuar, confira sua conexão.';
+      document.body.appendChild(box);
+    }
+    window.addEventListener('error', bootFailed);
+  </script>
+  <script type="module" src="js/llm/main.js" onerror="bootFailed()"></script>
+</body>
+</html>

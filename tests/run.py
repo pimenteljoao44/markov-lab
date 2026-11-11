@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PAGES = ["tests/math.test.html", "tests/app.test.html"]
+PAGES = ["tests/math.test.html", "tests/platform.test.html", "tests/app.test.html", "tests/pages.test.html"]
 TIMEOUT_S = 180
 NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "msedge"]
 WINDOWS_PATHS = [

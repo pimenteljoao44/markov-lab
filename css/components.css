@@ -58,6 +58,8 @@
   cursor: pointer; font-weight: 700; font-size: 13.5px; white-space: nowrap;
   transition: background .15s, border-color .15s, transform .1s;
 }
+/* Um link com cara de botão (abrir um laboratório) não leva o sublinhado de link. */
+a.btn { text-decoration: none; }
 .btn:hover { border-color: var(--ink-3); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .4; cursor: not-allowed; }

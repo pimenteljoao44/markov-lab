@@ -84,7 +84,7 @@ const threeStates = (matrix) => ({ meta: { title: 'Três', unit: 'cliente', step
 /** Abre o app do zero, com os dados salvos pedidos e, a não ser que se peça, sem balões. */
 async function boot({ hash = '', storage = { level: 3 }, width = 1280, height = 800, coach = false } = {}) {
   await prepare(storage, coach);
-  await mount({ src: `${BASE}index.html${hash}` }, width, height);
+  await mount({ src: `${BASE}markov.html${hash}` }, width, height);
   await ready();
 }
 
@@ -679,14 +679,14 @@ const TESTS = [
     assert(!$('#boot-error'), 'sem mensagem de erro');
   }],
   ['módulo que não carrega mostra uma mensagem', async () => {
-    const html = await (await fetch(`${BASE}index.html`)).text();
+    const html = await (await fetch(`${BASE}markov.html`)).text();
     await bootHtml(html.replace('src="js/main.js"', 'src="js/nao-existe.js"'));
     const box = await until(() => $('#boot-error'), 'a mensagem');
     assert(/Não foi possível carregar/.test(box.textContent), box.textContent);
     same(box.getAttribute('role'), 'alert', 'papel');
   }],
   ['erro ao iniciar mostra a mesma mensagem', async () => {
-    const html = await (await fetch(`${BASE}index.html`)).text();
+    const html = await (await fetch(`${BASE}markov.html`)).text();
     const broken = encodeURIComponent('throw new Error("falha simulada ao iniciar");');
     await bootHtml(html.replace('src="js/main.js"', `src="data:text/javascript,${broken}"`));
     await until(() => $('#boot-error'), 'a mensagem');
