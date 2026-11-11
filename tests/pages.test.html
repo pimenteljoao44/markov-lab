@@ -303,6 +303,74 @@ const TESTS = [
     assert(written.startsWith('# Caderno de IA aplicada: minhas explicações'), written.slice(0, 50));
     assert(written.includes('## Fase 0') && written.includes(LONG), 'fase e texto');
   }],
+  ['trilha: lembra de guardar a cópia quando já há trabalho e ela nunca foi feita', async () => {
+    await boot('index.html');
+    await ready();
+    same(text('.backup-note'), 'Nada para guardar ainda.', 'sem progresso');
+    assert(!$('.backup-note.warn'), 'sem alarme à toa');
+    $('[data-check="khan-estatistica"]').click();
+    assert($('.backup-note.warn'), 'com progresso e sem cópia');
+    assert(/ainda não guardou uma cópia/.test(text('.backup-note')), text('.backup-note'));
+    const files = captureDownloads();
+    $('[data-export]').click();
+    same(files.length, 1, 'baixou a cópia');
+    same(text('.backup-note'), 'Última cópia guardada hoje.', 'depois de guardar');
+    assert(!$('.backup-note.warn'), 'o alarme sai');
+    await reload();
+    same(text('.backup-note'), 'Última cópia guardada hoje.', 'a data sobrevive a recarregar');
+  }],
+  ['trilha: cópia antiga com trabalho novo volta a lembrar', async () => {
+    const day = 86400000;
+    await boot('index.html', { storage: { [TRAIL_UI_KEY]: { backupAt: Date.now() - 20 * day }, [TRAIL_KEY]: { checks: ['khan-estatistica'], notes: {} } } });
+    await ready();
+    assert($('.backup-note.warn') && /há 20 dias/.test(text('.backup-note')), text('.backup-note'));
+    await boot('index.html', { storage: { [TRAIL_UI_KEY]: { backupAt: Date.now() - 3 * day }, [TRAIL_KEY]: { checks: ['khan-estatistica'], notes: {} } } });
+    await ready();
+    assert(!$('.backup-note.warn') && /há 3 dias/.test(text('.backup-note')), 'cópia recente não incomoda');
+    await boot('index.html', { storage: { [TRAIL_UI_KEY]: { backupAt: Date.now() - day, open: 'quebrado' }, [TRAIL_KEY]: {} } });
+    await ready();
+    assert(/ontem/.test(text('.backup-note')), 'preferência corrompida não derruba a página');
+  }],
+  ['trilha: avisa uma vez quando o navegador não deixa guardar', async () => {
+    await boot('index.html');
+    await ready();
+    win().Storage.prototype.setItem = () => {
+      throw new Error('cheio');
+    };
+    $('[data-check="khan-estatistica"]').click();
+    const toast = await until(() => $$('.toast').find((t) => /Não consegui guardar/.test(t.textContent)), 'o aviso');
+    assert(/Guarde uma cópia/.test(toast.textContent), toast.textContent);
+    $('[data-check="3b1b-algebra"]').click();
+    same($$('.toast').filter((t) => /Não consegui guardar/.test(t.textContent)).length, 1, 'avisa uma vez só');
+    assert($('[data-item="3b1b-algebra"]').classList.contains('done'), 'a página continua funcionando sem guardar');
+  }],
+  ['atalhos: o "?" abre a lista nas três páginas, e dentro de um campo é só um caractere', async () => {
+    const press = (key, target = doc().body, opts = {}) => target.dispatchEvent(new (win().KeyboardEvent)('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+    for (const [page, extra] of [['index.html', 'Trilha'], ['markov.html', 'Desfaz'], ['llm.html', 'Sorteia']]) {
+      await boot(page, { storage: { 'markovlab:v3': { level: 3 } } });
+      await ready();
+      assert(!$('dialog.shortcuts[open]'), `${page}: nada aberto de início`);
+      press('?');
+      const dlg = await until(() => $('dialog.shortcuts[open]'), `${page}: a lista abrir`);
+      assert(dlg.querySelectorAll('kbd').length >= 6, `${page}: teclas desenhadas`);
+      assert(dlg.textContent.includes(extra), `${page}: traz os atalhos da própria página`);
+      assert(dlg.querySelector('h2').id === 'shortcuts-title' && dlg.getAttribute('aria-labelledby') === 'shortcuts-title', `${page}: nome para leitor de tela`);
+      dlg.querySelector('[data-close]').click();
+      assert(!dlg.open, `${page}: fecha pelo botão`);
+      $('#btn-shortcuts').click();
+      assert($('dialog.shortcuts').open, `${page}: o botão do topo também abre`);
+      $('dialog.shortcuts').close();
+      press('?', doc().body, { ctrlKey: true });
+      assert(!$('dialog.shortcuts').open, `${page}: com Ctrl não abre`);
+    }
+    await boot('index.html');
+    await ready();
+    $('[data-toggle="fase0"]').click();
+    $('[data-toggle="fase0"]').click();
+    const note = $('[data-note="explica-processos"]');
+    press('?', note);
+    assert(!$('dialog.shortcuts[open]'), 'em campo de texto não abre');
+  }],
   ['trilha: link de modelo antigo segue para o Laboratório de Markov', async () => {
     const chain = { meta: { title: 'Link antigo', unit: 'cliente', step: 'mês' }, states: [{ label: 'Ativo' }, { label: 'Saiu' }], matrix: [[0.9, 0.1], [0, 1]] };
     await boot('index.html', { hash: encodeShare(chain) });

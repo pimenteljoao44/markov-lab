@@ -37,6 +37,7 @@ function t(name, fn) {
   catch (e) { failed++; failures.push(`${name}: ${e.message}`); out.innerHTML += `<span class="fail">✗ ${esc(name)}: ${esc(e.message)}</span>\n`; }
 }
 function assert(c, msg = 'falhou') { if (!c) throw new Error(msg); }
+function same(a, b, label = 'valor') { assert(a === b, `${label}: veio "${a}", esperado "${b}"`); }
 function throws(fn, re) {
   try { fn(); } catch (e) { assert(re.test(e.message), `mensagem inesperada: ${e.message}`); return; }
   throw new Error('deveria ter lançado erro');
@@ -273,6 +274,33 @@ t('célula vazia não cria transição', () => {
   assert(estimateChain(parseSequences('A,,B')).transitions === 0);
   const longa = readHistory('id,data,status\n1,2024-01,A\n1,2024-02,\n1,2024-03,B');
   assert(longa.gaps === 1 && estimateChain(longa.sequences).transitions === 0, JSON.stringify(longa));
+});
+t('CSV: mês sem registro interrompe a sequência quando o ritmo é regular', () => {
+  const csv = 'id,mes,estado\n1,2024-01,A\n1,2024-02,B\n1,2024-03,A\n1,2024-04,B\n1,2024-07,A\n1,2024-08,B\n2,2024-01,A\n2,2024-02,A\n2,2024-03,B';
+  const h = readHistory(csv);
+  assert(h.format === 'long' && h.canSplit && h.splitGaps, JSON.stringify({ f: h.format, c: h.canSplit, s: h.splitGaps }));
+  same(h.sequences.map((s) => s.join('')).join(), 'ABAB,AB,AAB', 'abril → julho pulou dois meses');
+  assert(h.notes.some((n) => /1 período sem registro/.test(n)), h.notes.join(' | '));
+  same(estimateChain(h.sequences).transitions, 6, 'só as transições vistas entram na conta');
+  const off = readHistory(csv, { splitGaps: false });
+  same(off.sequences[0].join(''), 'ABABAB', 'sem cortar, o salto vira transição');
+  same(estimateChain(off.sequences).transitions, 7, 'e conta uma transição que ninguém viu');
+  assert(!off.splitGaps && off.canSplit, 'a pessoa pode ligar de volta');
+});
+t('CSV: datas em dias seguem o mesmo critério; sem ritmo regular, nada é cortado', () => {
+  const diario = 'id,data,estado\n1,2024-03-01,A\n1,2024-03-02,B\n1,2024-03-03,A\n1,2024-03-07,B\n1,2024-03-08,A';
+  same(readHistory(diario).sequences.map((s) => s.join('')).join(), 'ABA,BA', 'quatro dias sem registro');
+  const solto = 'id,data,estado\n1,2024-01-03,A\n1,2024-01-09,B\n1,2024-02-20,A\n1,2024-02-21,B';
+  const h = readHistory(solto);
+  assert(h.canSplit && !h.splitGaps, 'datas soltas: a opção existe, mas começa desligada');
+  same(h.sequences.length, 1, 'uma sequência só');
+  same(readHistory(solto, { splitGaps: true }).sequences.length > 1, true, 'ligada à mão, corta');
+});
+t('CSV: números e coluna sem tempo não ganham opção de cortar', () => {
+  assert(!readHistory('id,estado\n1,A\n1,B\n1,A').canSplit, 'sem coluna de tempo');
+  const passos = readHistory('id,passo,estado\n1,1,A\n1,2,B\n1,3,A\n1,6,B');
+  assert(passos.canSplit, 'passos numéricos regulares');
+  same(passos.sequences.map((s) => s.join('')).join(), 'ABA,B', 'o salto de 3 para 6 corta');
 });
 t('tabela: nome composto no cabeçalho', () => {
   const r = parseTable('Em dia, Atrasado\n0.5, 0.5\n0.2, 0.8');

@@ -160,3 +160,15 @@ dialog.notebook[open] { display: flex; flex-direction: column; }
 .cs-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
 .cs-check { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; font-size: 13px; cursor: pointer; }
 .nb-lesson { display: block; margin-top: 6px; padding-left: 0; text-align: left; white-space: normal; }
+
+/* ───────── Atalhos de teclado ───────── */
+dialog.shortcuts { width: min(560px, calc(100vw - 24px)); }
+.kbd-section + .kbd-section { margin-top: 14px; }
+.kbd-section h3 { margin: 0 0 4px; font-family: var(--display); font-weight: 400; font-size: 15px; }
+.kbd-list { margin: 0; }
+.kbd-row { display: grid; grid-template-columns: minmax(150px, auto) minmax(0, 1fr); gap: 4px 14px; align-items: baseline; padding: 6px 0; border-top: 1px dashed var(--line); font-size: 13.5px; }
+.kbd-row dt { margin: 0; }
+.kbd-row dd { margin: 0; color: var(--ink-2); }
+kbd { display: inline-block; min-width: 24px; padding: 1px 7px; border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; background: #fff; font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: center; color: var(--ink); }
+.kbd-plus { margin: 0 3px; color: var(--ink-3); }
+.kbd-or { margin: 0 4px; color: var(--ink-3); font-size: 12px; }

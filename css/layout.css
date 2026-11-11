@@ -130,3 +130,11 @@ code { font-family: var(--mono); font-size: .92em; background: var(--line-soft);
 .side-nav button:hover { background: var(--card); color: var(--ink); }
 .side-nav button[aria-current] { background: var(--card); border-color: var(--ink); color: var(--ink); }
 .side * { scroll-margin-top: 48px; }
+
+/* Muitos estados numa janela baixa: o papel ganha a altura de que os potes precisam e a página passa a rolar. */
+body.graph-roomy { overflow: auto; }
+body.graph-roomy .app { height: auto; min-height: 100vh; }
+/* A coluna da direita é mais alta que o palco: sem align-self, a grade espalharia a sobra entre as linhas. */
+body.graph-roomy .stage { align-self: start; grid-template-rows: auto auto auto auto; }
+body.graph-roomy .graph-wrap { height: var(--need); }
+body.graph-roomy .side { overflow: visible; }

@@ -161,23 +161,93 @@ function detectColumns(rows) {
   return { header, format: long ? 'long' : 'sequences', id, time, state, skip };
 }
 
-function longToSequences(body, { id, time, state }) {
+const DAY = 86400000;
+
+/**
+ * Datas viram contagem de períodos, para dois meses seguidos estarem a 1 de distância
+ * (e não a 28, 30 ou 31 dias). Números e datas com hora ficam como estão.
+ */
+function toPeriods(keys, dated) {
+  const known = keys.filter((k) => k !== null);
+  if (!dated || !known.length || !known.every((k) => k % DAY === 0)) return keys;
+  const monthly = known.every((k) => new Date(k).getUTCDate() === 1);
+  return keys.map((k) => {
+    if (k === null) return null;
+    if (!monthly) return k / DAY;
+    const d = new Date(k);
+    return d.getUTCFullYear() * 12 + d.getUTCMonth();
+  });
+}
+
+/** O passo mais comum entre observações seguidas de um mesmo item. É "regular" quando quase todos são ele. */
+function cadenceOf(groups) {
+  const counts = new Map();
+  let total = 0;
+  for (const g of groups) {
+    for (let i = 1; i < g.length; i++) {
+      const step = g[i].key - g[i - 1].key;
+      if (step > 0) {
+        counts.set(step, (counts.get(step) || 0) + 1);
+        total++;
+      }
+    }
+  }
+  let step = 0;
+  let best = 0;
+  for (const [s, n] of counts) {
+    if (n > best || (n === best && s < step)) [step, best] = [s, n];
+  }
+  return { step, regular: total >= 3 && best / total >= 0.6 };
+}
+
+function longToSequences(body, { id, time, state, splitGaps }) {
   const groups = new Map();
+  const raw = time >= 0 ? body.map((row) => row[time]) : [];
+  const dated = time >= 0 && raw.every((c) => !c || (timeKey(c) !== null && !isPlainNumber(c)));
+  const periods = time >= 0 ? toPeriods(raw.map((c) => (c ? timeKey(c) : null)), dated) : [];
   body.forEach((row, order) => {
     const key = id >= 0 ? row[id] : '';
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ state: row[state], key: time >= 0 ? timeKey(row[time]) : null, order });
+    groups.get(key).push({ state: row[state], key: time >= 0 ? periods[order] : null, order });
   });
   const list = [...groups.values()];
   const sortable = time >= 0 && list.every((g) => g.every((o) => o.key !== null));
-  let gaps = 0;
+  if (sortable) for (const g of list) g.sort((a, b) => a.key - b.key || a.order - b.order);
+  const cadence = sortable ? cadenceOf(list) : { step: 0, regular: false };
+  // Sem ritmo regular não há como saber o que é "um período a menos": só corta quando a pessoa pede.
+  const canSplit = sortable && cadence.step > 0;
+  const split = canSplit && (splitGaps ?? cadence.regular);
+
+  let gaps = 0; // células de estado vazias
+  let skipped = 0; // períodos inteiros sem nenhuma linha
   const sequences = list.flatMap((g) => {
-    if (sortable) g.sort((a, b) => a.key - b.key || a.order - b.order);
-    const runs = runsOf(g.map((o) => o.state));
-    gaps += Math.max(0, runs.length - 1);
+    const runs = [];
+    let cur = [];
+    let last = null;
+    let cuts = 0;
+    const flush = () => {
+      if (cur.length) runs.push(cur);
+      cur = [];
+    };
+    for (const o of g) {
+      if (!o.state) {
+        flush();
+        last = null;
+        continue;
+      }
+      if (split && last !== null && o.key - last > cadence.step * 1.5) {
+        flush();
+        cuts++;
+      }
+      cur.push(o.state);
+      last = o.key;
+    }
+    flush();
+    skipped += cuts;
+    gaps += Math.max(0, runs.length - 1 - cuts);
     return runs;
   });
-  return { sequences, gaps, sortable };
+  return { sequences, gaps, skipped, sortable, canSplit, split };
 }
 
 const plural = (n, one, many) => (n === 1 ? one : many);
@@ -207,9 +277,13 @@ export function readHistory(text, opts = {}) {
 
   let sequences;
   let gaps;
+  let canSplit = false;
+  let splitGaps = false;
   if (o.format === 'long') {
     const res = longToSequences(body, o);
-    ({ sequences, gaps } = res);
+    ({ sequences, gaps, canSplit } = res);
+    splitGaps = res.split;
+    if (res.skipped) notes.push(`${res.skipped} ${plural(res.skipped, 'período sem registro', 'períodos sem registro')} no meio do histórico de algum item: não contei transição ${res.skipped === 1 ? 'através dele' : 'através deles'}.`);
     const who = o.id >= 0 ? `“${columns[o.id]}”` : 'um item só';
     const when = o.time >= 0 ? `“${columns[o.time]}”` : 'a ordem das linhas';
     notes.push(`Li uma observação por linha. Quem é: ${who}. Quando: ${when}. Estado: “${columns[o.state]}”.`);
@@ -223,7 +297,7 @@ export function readHistory(text, opts = {}) {
     if (o.skip >= 0) notes.push(`Ignorei a coluna “${columns[o.skip]}”: ela identifica a linha, não é um estado.`);
   }
   notes.push(...gapNote(gaps));
-  return { sequences, table: true, format: o.format, header: o.header, columns, id: o.id, time: o.time, state: o.state, skip: o.skip, gaps, notes };
+  return { sequences, table: true, format: o.format, header: o.header, columns, id: o.id, time: o.time, state: o.state, skip: o.skip, gaps, canSplit, splitGaps, notes };
 }
 
 /** "ativo", "Ativo" e "ATIVO" são o mesmo estado: fica a grafia mais comum (na dúvida, a primeira). */

@@ -587,6 +587,76 @@ const TESTS = [
     assert(/concluído/.test($('.ch-tag').textContent), 'a resposta certa conclui');
   }],
 
+  // ── Diagrama com muitos estados
+  ['diagrama denso: chance pequena vira fundo e volta ao apontar para o pote', async () => {
+    const n = 6;
+    const states = Array.from({ length: n }, (_, i) => ({ id: `s${i}`, label: `E${i + 1}` }));
+    const matrix = states.map((_, i) => {
+      const row = new Array(n).fill(0);
+      row[i] = 0.4;
+      row[(i + 1) % n] = 0.3;
+      row[(i + 2) % n] = 0.28;
+      row[(i + 3) % n] = 0.02;
+      return row;
+    });
+    await boot({ storage: { level: 3, chains: { 3: { meta: { title: 'Denso', unit: 'cliente', step: 'mês' }, states, matrix } } } });
+    await settle();
+    const weak = $$('.edge.weak');
+    same(weak.length, n, 'uma seta fraca por estado');
+    assert($$('.edge:not(.weak)').length >= 2 * n, 'as setas fortes continuam normais');
+    const opacity = (el) => parseFloat(win().getComputedStyle(el.querySelector('.stroke')).strokeOpacity);
+    assert(opacity(weak[0]) < 0.2, `seta fraca discreta (${opacity(weak[0])})`);
+    (await app()).actions.setHover({ type: 'node', i: 0 });
+    const lit = $$('.edge.weak.is-hl');
+    assert(lit.length >= 1 && lit.every((e) => opacity(e) === 1), 'ao apontar para o pote, a seta fraca aparece inteira');
+  }],
+  ['diagrama denso: numa janela baixa o papel ganha altura e os potes não se sobrepõem', async () => {
+    const n = 10;
+    const states = Array.from({ length: n }, (_, i) => ({ id: `s${i}`, label: `Estado ${i + 1}` }));
+    const matrix = states.map((_, i) => states.map((__, j) => (i === j ? 0.4 : 0.6 / (n - 1))));
+    await boot({ width: 1280, height: 800, storage: { level: 3, chains: { 3: { meta: { title: 'Denso', unit: 'cliente', step: 'mês' }, states, matrix } } } });
+    assert(doc().body.classList.contains('graph-roomy'), 'a página passa a rolar');
+    assert($('.model-bar').getBoundingClientRect().height < 120, `a faixa do modelo não pode esticar (${Math.round($('.model-bar').getBoundingClientRect().height)})`);
+    assert($('.simbar').getBoundingClientRect().height < 200, 'a barra de simulação também não');
+    assert($('#graph-wrap').getBoundingClientRect().height >= 150 + n * 40 - 1, `altura ${$('#graph-wrap').getBoundingClientRect().height}`);
+    const spacing = () => {
+      const centers = $$('g.node .rim').map((c) => {
+        const r = c.getBoundingClientRect();
+        return [r.left + r.width / 2, r.top + r.height / 2];
+      });
+      let min = Infinity;
+      for (let a = 0; a < centers.length; a++) {
+        for (let b = a + 1; b < centers.length; b++) min = Math.min(min, Math.hypot(centers[a][0] - centers[b][0], centers[a][1] - centers[b][1]));
+      }
+      return min;
+    };
+    await until(() => spacing() >= 68, 'os potes se afastarem (cada um tem 80 px de diâmetro)', 8000);
+    const few = states.slice(0, 3);
+    await boot({ width: 1280, height: 800, storage: { level: 3, chains: { 3: { meta: { title: 'Poucos', unit: 'cliente', step: 'mês' }, states: few, matrix: few.map((_, i) => few.map((__, j) => (i === j ? 0.5 : 0.25))) } } } });
+    assert(!doc().body.classList.contains('graph-roomy'), 'com poucos estados o layout de sempre continua');
+  }],
+  ['diagrama denso: no celular o papel cresce com o número de estados', async () => {
+    const n = 10;
+    const states = Array.from({ length: n }, (_, i) => ({ id: `s${i}`, label: `E${i + 1}` }));
+    const matrix = states.map((_, i) => states.map((__, j) => (i === j ? 0.5 : 0.5 / (n - 1))));
+    await boot({ width: 375, height: 812, storage: { level: 3, chains: { 3: { meta: { title: 'Denso', unit: 'cliente', step: 'mês' }, states, matrix } } } });
+    await settle();
+    assert($('#graph-wrap').getBoundingClientRect().height >= 150 + n * 62 - 1, `altura ${$('#graph-wrap').getBoundingClientRect().height}`);
+    assert(doc().documentElement.scrollWidth <= win().innerWidth, 'sem rolagem lateral');
+  }],
+  ['CSV com mês faltando: a prévia avisa e deixa ligar ou desligar o corte', async () => {
+    await boot();
+    const d = await createFromData('id,mes,estado\n1,2024-01,A\n1,2024-02,B\n1,2024-03,A\n1,2024-04,B\n1,2024-07,A\n1,2024-08,B\n2,2024-01,A\n2,2024-02,A\n2,2024-03,B');
+    const box = d.querySelector('[data-fmt="splitGaps"]');
+    assert(box && box.checked, 'opção ligada porque o ritmo é regular');
+    assert(/1 período sem registro/.test(d.querySelector('[data-preview]').textContent), d.querySelector('[data-preview]').textContent);
+    box.checked = false;
+    box.dispatchEvent(new (win().Event)('change', { bubbles: true }));
+    assert(!/período sem registro/.test(d.querySelector('[data-preview]').textContent), 'desligada, o aviso some');
+    same(d.ownerDocument.activeElement.dataset.fmt, 'splitGaps', 'o foco fica na opção');
+    d.close();
+  }],
+
   // ── Índice dos painéis
   ['índice dos painéis leva ao Diagnóstico e acompanha o nível', async () => {
     await boot();

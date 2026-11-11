@@ -98,6 +98,7 @@ export class GraphView {
       });
 
     new ResizeObserver(() => this.resize()).observe(wrap);
+    window.addEventListener('resize', () => this.fit());
     this.resize();
 
     subscribe((s, t) => {
@@ -115,9 +116,24 @@ export class GraphView {
   ix(px) { return clamp((px - this.mx) / (this.w - 2 * this.mx), 0, 1); }
   iy(py) { return clamp((py - MARGIN * 0.75) / (this.h - MARGIN * 2.5), 0, 1); }
 
+  /**
+   * Com muitos estados o papel precisa de altura própria, senão os potes se amontoam:
+   * em tela estreita ele cresce; numa janela baixa de computador a página passa a rolar.
+   */
+  fit() {
+    const n = this.states || 0;
+    const narrow = matchMedia('(max-width: 1180px)').matches;
+    const need = n > 5 ? 150 + n * 40 : 0;
+    this.wrap.style.minHeight = narrow ? `${Math.max(380, 150 + n * 62)}px` : '';
+    this.wrap.style.setProperty('--need', `${need}px`);
+    // Tudo que não é o papel (topo, faixas, barra de simulação e desafio) ocupa cerca de 430 px da janela.
+    document.body.classList.toggle('graph-roomy', !narrow && need > 0 && window.innerHeight - 430 < need);
+  }
+
   /** O mais baixo que o centro de um pote pode ficar: sobra lugar para o nome, para π e para a legenda. */
   get floor() {
-    return this.h - R - 64 - this.keyRoom;
+    // Nunca abaixo do limite de cima: num papel baixíssimo os dois se cruzariam e todos os potes iriam para a mesma linha.
+    return Math.max(R + 22, this.h - R - 64 - this.keyRoom);
   }
 
   resize() {
@@ -157,6 +173,9 @@ export class GraphView {
     this.force.alpha(old.size !== this.nodes.length || added ? 0.7 : 0.25).restart();
 
     const mode = s.ui.matrixMode;
+
+    this.states = states.length;
+    this.fit();
 
     // ── potes
     const ng = this.gNodes.selectAll('g.node').data(this.nodes, (n) => n.id);
@@ -233,6 +252,8 @@ export class GraphView {
       rev: e.i !== e.j && d.effective[e.j][e.i] > EPS,
       color: states[e.i].color,
       w: 1.6 + 7 * e.p,
+      // Num diagrama cheio, setas de chance pequena viram um fundo discreto: voltam ao apontar para o pote.
+      weak: states.length > 5 && e.p < 0.08,
     }));
     const eg = this.gEdges.selectAll('g.edge').data(this.edges, (e) => e.key);
     eg.exit().remove();
@@ -256,6 +277,7 @@ export class GraphView {
       .on('click', (ev, e) => explain('edge-info', { i: e.i, j: e.j }));
     ee.transition().duration(400).style('opacity', 1);
     this.edgeSel = ee.merge(eg);
+    this.edgeSel.classed('weak', (e) => e.weak);
     this.edgeSel.attr('aria-label', (e) => `Transição de ${states[e.i].label} para ${states[e.j].label}, chance ${fmtP(e.p, mode)}. Enter abre a explicação, Esc volta ao pote.`);
     this.edgeSel
       .select('.stroke')
@@ -264,7 +286,7 @@ export class GraphView {
       .duration(380)
       .ease(d3.easeCubicOut)
       .attr('stroke-width', (e) => e.w)
-      .attr('stroke-opacity', (e) => 0.4 + 0.55 * e.p);
+      .attr('stroke-opacity', (e) => (e.weak ? 0.14 : 0.4 + 0.55 * e.p));
     this.edgeSel.select('.hl-under').attr('stroke-width', (e) => e.w + 12);
     this.edgeSel.select('.arrow').attr('fill', (e) => e.color);
 

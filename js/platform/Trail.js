@@ -14,21 +14,25 @@ const percent = (fraction) => `${Math.round(fraction * 100)}%`;
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const phaseColors = (phase) => `--c:var(--ph${phase.num});--c-ink:var(--ph${phase.num}-ink)`;
 
-/** Fases que a pessoa abriu ou fechou à mão. As demais seguem o padrão: aberta só a do próximo passo. */
-function loadChoices() {
+/**
+ * Preferências de exibição, guardadas à parte do progresso (e fora da cópia de segurança):
+ * quais fases a pessoa abriu ou fechou à mão, e quando ela guardou a última cópia neste computador.
+ * Sem escolha, só a fase do próximo passo abre.
+ */
+function loadUi() {
   try {
-    const saved = JSON.parse(localStorage.getItem(TRAIL_UI_KEY))?.open;
-    const choices = {};
-    for (const phase of PHASES) if (typeof saved?.[phase.id] === 'boolean') choices[phase.id] = saved[phase.id];
-    return choices;
+    const saved = JSON.parse(localStorage.getItem(TRAIL_UI_KEY)) || {};
+    const open = {};
+    for (const phase of PHASES) if (typeof saved.open?.[phase.id] === 'boolean') open[phase.id] = saved.open[phase.id];
+    return { open, backupAt: Number.isFinite(saved.backupAt) ? saved.backupAt : 0 };
   } catch {
-    return {};
+    return { open: {}, backupAt: 0 };
   }
 }
 
-function saveChoices(choices) {
+function saveUi(ui) {
   try {
-    localStorage.setItem(TRAIL_UI_KEY, JSON.stringify({ open: choices }));
+    localStorage.setItem(TRAIL_UI_KEY, JSON.stringify(ui));
   } catch {
     /* armazenamento indisponível: a escolha vale até fechar a página */
   }
@@ -46,7 +50,8 @@ export class Trail {
   constructor(listEl, sideEl, toolsEl) {
     Object.assign(this, { listEl, sideEl, toolsEl });
     this.trail = loadTrail();
-    this.choices = loadChoices();
+    this.ui = loadUi();
+    this.choices = this.ui.open;
     this.saveTimer = null;
     this.render();
     listEl.addEventListener('change', (e) => {
@@ -77,7 +82,8 @@ export class Trail {
   reload() {
     this.flush();
     this.trail = loadTrail();
-    this.choices = loadChoices();
+    this.ui = loadUi();
+    this.choices = this.ui.open;
     this.render();
   }
 
@@ -212,6 +218,7 @@ export class Trail {
       <section class="card">
         <div class="card-head"><h2>Seu progresso é seu</h2></div>
         <p class="card-sub">Tudo fica guardado só neste navegador. Guarde uma cópia de vez em quando: limpar os dados do navegador apaga o caderno.</p>
+        ${this.backupHtml()}
         <div class="tool-row">
           <button type="button" class="btn btn-sm" data-export>Guardar cópia</button>
           <label class="btn btn-sm btn-quiet">Abrir cópia<input type="file" accept="application/json,.json" data-import hidden></label>
@@ -238,6 +245,23 @@ export class Trail {
       <div class="tool-row next-actions">${actions}</div>`;
   }
 
+  /** Diz quando foi a última cópia e cutuca, sem exagero, quando já há trabalho a perder. */
+  backupHtml() {
+    const { backupAt } = this.ui;
+    const touched = overallProgress(this.trail).done > 0 || Object.values(this.trail.notes).some((t) => t.trim());
+    let text = 'Nada para guardar ainda.';
+    let warn = false;
+    if (!backupAt && touched) {
+      text = 'Você ainda não guardou uma cópia.';
+      warn = true;
+    } else if (backupAt) {
+      const days = Math.max(0, Math.floor((Date.now() - backupAt) / 86400000));
+      text = `Última cópia guardada ${days === 0 ? 'hoje' : days === 1 ? 'ontem' : `há ${days} dias`}.`;
+      warn = days >= 14 && touched;
+    }
+    return `<p class="backup-note ${warn ? 'warn' : ''}" role="status">${text}${warn ? ' Vale guardar agora.' : ''}</p>`;
+  }
+
   phaseEl(id) {
     return this.listEl.querySelector(`[data-phase="${id}"]`);
   }
@@ -256,7 +280,7 @@ export class Trail {
     el.querySelector('[data-toggle]').setAttribute('aria-expanded', String(on));
     if (remember) {
       this.choices[id] = on;
-      saveChoices(this.choices);
+      saveUi(this.ui);
     }
     this.syncTools();
   }
@@ -292,7 +316,7 @@ export class Trail {
     const before = this.completedPhases();
     if (on) this.trail.checks.add(id);
     else this.trail.checks.delete(id);
-    saveTrail(this.trail);
+    this.persist();
     this.refresh();
     this.celebrate(before);
   }
@@ -311,7 +335,18 @@ export class Trail {
     if (this.saveTimer === null) return;
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    saveTrail(this.trail);
+    this.persist();
+  }
+
+  /** Quando o navegador não deixa guardar (janela anônima, dados desligados), a pessoa precisa saber antes de perder. */
+  persist() {
+    if (saveTrail(this.trail) || this.warnedStorage) return;
+    this.warnedStorage = true;
+    toast('Não consegui guardar o seu progresso', {
+      type: 'warn',
+      sub: 'O navegador bloqueou o armazenamento (janela anônima ou dados desligados). Guarde uma cópia antes de fechar a página.',
+      timeout: 10000,
+    });
   }
 
   // ── navegação
@@ -348,6 +383,9 @@ export class Trail {
   exportFile() {
     this.flush();
     download('caderno-de-ia.json', JSON.stringify(exportAll(), null, 2), 'application/json');
+    this.ui.backupAt = Date.now();
+    saveUi(this.ui);
+    this.refresh();
     toast('Cópia guardada', { type: 'ok', sub: 'caderno-de-ia.json, na pasta de downloads.' });
   }
 

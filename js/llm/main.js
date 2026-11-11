@@ -12,6 +12,7 @@ import { CorpusDialog } from './components/CorpusDialog.js';
 import { LabNotebook } from '../platform/LabNotebook.js';
 import { LabDock } from '../platform/LabDock.js';
 import { SideNav } from '../platform/SideNav.js';
+import { initShortcuts } from '../platform/Shortcuts.js';
 import { toast } from '../components/Toast.js';
 import { escapeHtml } from '../util.js';
 
@@ -169,6 +170,25 @@ window.addEventListener('pagehide', () => {
 });
 
 // ── atalhos
+initShortcuts(
+  [
+    {
+      title: 'Gerar texto',
+      items: [
+        { keys: ['Espaço'], what: 'Sorteia o próximo token' },
+        { keys: ['Enter'], what: 'Gera a frase inteira' },
+      ],
+    },
+    {
+      title: 'Barras do próximo token',
+      items: [
+        { keys: ['Tab'], what: 'Passa de barra em barra' },
+        { keys: ['Enter'], what: 'Escolhe o token da barra em foco' },
+      ],
+    },
+  ],
+  $('btn-shortcuts')
+);
 document.addEventListener('keydown', (e) => {
   if (e.target.closest('input, select, textarea, button, summary, dialog, a, [contenteditable]')) return;
   if (e.code === 'Space') {

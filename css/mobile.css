@@ -30,7 +30,11 @@
   input[type=range]::-moz-range-thumb { width: 17px; height: 17px; }
 }
 
+/* Sem teclado, a lista de atalhos só ocupa lugar. */
+@media (pointer: coarse) { #btn-shortcuts { display: none; } }
+
 @media (max-width: 720px) {
+  .kbd-row { grid-template-columns: minmax(0, 1fr); }
   .cs-video { flex-wrap: wrap; }
   .cs-link { margin-left: 40px; align-self: auto; }
 

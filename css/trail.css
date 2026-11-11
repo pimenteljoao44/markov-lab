@@ -98,6 +98,8 @@
 .trail-side .tool-row { margin-bottom: 0; }
 .trail-side .next-actions { margin-bottom: 14px; }
 .trail-side .notes-sub { margin-top: 12px; }
+.backup-note { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); }
+.backup-note.warn { padding: 6px 10px; border-radius: 8px; border-left: 4px solid var(--ink); background: var(--marker-soft); color: var(--ink); }
 
 /* Índice das fases: onde cada uma está e um atalho até ela. */
 .idx { margin: 0; padding: 10px 0 0; list-style: none; display: grid; gap: 2px; border-top: 1.5px solid var(--line-soft); }

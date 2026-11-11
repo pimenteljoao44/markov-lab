@@ -19,6 +19,7 @@ import { StoryNav } from './components/StoryNav.js';
 import { ModelStudio } from './components/ModelStudio.js';
 import { Notebook } from './components/Notebook.js';
 import { SideNav } from './platform/SideNav.js';
+import { initShortcuts } from './platform/Shortcuts.js';
 import { CoursePanel } from './components/CoursePanel.js';
 import { buildModel } from './models/catalog.js';
 import { toast, undoToast, dismissActionToasts } from './components/Toast.js';
@@ -133,6 +134,37 @@ const sideNav = new SideNav(document.querySelector('.side'), [
 subscribe((s, t) => {
   if (t.has('level')) sideNav.refresh();
 });
+initShortcuts(
+  [
+    {
+      title: 'Modelo e simulação',
+      items: [
+        { keys: ['Ctrl+Z'], what: 'Desfaz a última mudança no modelo' },
+        { keys: ['Ctrl+Y', 'Ctrl+Shift+Z'], what: 'Refaz o que foi desfeito' },
+        { keys: ['Espaço'], what: 'Roda ou pausa a simulação' },
+        { keys: ['1', '2', '3'], what: 'Troca de nível' },
+      ],
+    },
+    {
+      title: 'Diagrama',
+      items: [
+        { keys: ['Tab'], what: 'Passa de pote em pote' },
+        { keys: ['Enter'], what: 'Abre a explicação do pote ou da seta em foco' },
+        { keys: ['Setas'], what: 'A partir de um pote, percorre as setas que saem dele' },
+        { keys: ['Esc'], what: 'Volta da seta para o pote' },
+        { keys: ['Shift+Setas'], what: 'Move o pote em foco' },
+      ],
+    },
+    {
+      title: 'Matriz',
+      items: [
+        { keys: ['↑', '↓'], what: 'Muda o valor da célula em 0,01 (com Shift, em 0,1)' },
+        { keys: ['Enter'], what: 'Confirma e vai para a célula de baixo' },
+      ],
+    },
+  ],
+  $('btn-shortcuts')
+);
 new ChallengeDock($('challenge-dock'), {
   onComplete() {
     const s = getState();

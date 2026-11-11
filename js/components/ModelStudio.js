@@ -449,6 +449,7 @@ export class ModelStudio {
         ? `${pick('id', 'Quem é', h.id, 'um item só')}${pick('time', 'Quando', h.time, 'ordem das linhas')}${pick('state', 'Estado', h.state)}`
         : pick('skip', 'Coluna a ignorar', h.skip, 'nenhuma')}
       <label class="wz-check"><input type="checkbox" data-fmt="header" ${h.header ? 'checked' : ''}> A primeira linha é cabeçalho</label>
+      ${h.canSplit ? `<label class="wz-check"><input type="checkbox" data-fmt="splitGaps" ${h.splitGaps ? 'checked' : ''}> Período sem registro interrompe a sequência</label>` : ''}
     </div>`;
   }
 

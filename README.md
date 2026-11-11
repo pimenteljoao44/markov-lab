@@ -56,7 +56,7 @@ Um caderno interativo para **modelar qualquer problema** com cadeias de Markov: 
 | Caminho | Quando usar | O que acontece |
 |---|---|---|
 | Descrever em palavras | Você tem uma ideia, mas não tem números | Um assistente pergunta o que muda, quais são as situações possíveis e as chances de cada uma |
-| Tenho dados | Você tem um histórico | Cole sequências ou abra um CSV, com um estado por coluna ou com colunas como cliente, mês e estado. O app mostra como entendeu o arquivo e deixa corrigir; as chances saem da contagem de transições |
+| Tenho dados | Você tem um histórico | Cole sequências ou abra um CSV, com um estado por coluna ou com colunas como cliente, mês e estado. O app mostra como entendeu o arquivo e deixa corrigir; quando o histórico tem ritmo regular (um registro por mês, por exemplo), um período inteiro sem registro interrompe a sequência, em vez de virar uma transição que ninguém viu; as chances saem da contagem de transições |
 | Colar uma tabela | Você já tem a matriz ou as contagens | Copie da planilha: nomes e normalização são tratados automaticamente |
 
 Ou comece por um dos 23 modelos da galeria: funil de vendas, vida de um assinante, inadimplência, caminho na faculdade, epidemia, PageRank, fila, ruína do jogador e outros. Os números da galeria são ilustrativos.
@@ -103,6 +103,8 @@ No Laboratório de Markov, **Arquivo → Exportar arquivo** gera um JSON que pod
 ```
 
 ## Atalhos de teclado
+
+A tecla `?` (ou o botão **Atalhos**, no topo) abre a lista completa de cada página.
 
 No Laboratório de Markov:
 
