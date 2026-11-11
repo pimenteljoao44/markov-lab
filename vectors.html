@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- A página só carrega o que é dela. É o navegador que garante, não só os testes. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>Vetores e similaridade: como um sistema decide que dois textos se parecem</title>
+  <meta name="description" content="Arraste setas no plano e veja produto escalar, cosseno e distância mudarem. Depois, faça uma busca por significado entre dez textos.">
+  <script src="js/boot.js"></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <script defer src="vendor/katex/katex.min.js"></script>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/coach.css">
+  <link rel="stylesheet" href="css/studio.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/vectors.css">
+  <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Vetores e similaridade</h1>
+        <p>parecido é apontar para o mesmo lado</p>
+      </div>
+      <p class="phase-tag" style="--tag:var(--lv1-ink)"><b>Fase 0</b> Matemática que sustenta decisão</p>
+      <nav class="top-actions" aria-label="Navegação do caderno">
+        <a class="text-btn" href="index.html">Trilha</a>
+        <button type="button" class="text-btn" id="btn-shortcuts" title="Atalhos de teclado (tecla ?)">Atalhos</button>
+        <button class="text-btn" id="btn-notebook" title="Todos os conceitos deste laboratório, em um lugar só">Caderno de teoria <span class="nb-count" id="nb-count"></span></button>
+      </nav>
+    </header>
+
+    <main class="workspace">
+      <section class="stage">
+        <div class="model-bar">
+          <div class="mb-info">
+            <h2 id="model-title"></h2>
+            <p id="model-sub"></p>
+          </div>
+        </div>
+        <div class="lesson">
+          <h2>Um vetor é uma seta</h2>
+          <p>O que importa nela é para onde aponta e quão comprida é. Arraste as pontas e veja os números mudarem.</p>
+        </div>
+        <div class="gen-wrap vec-wrap">
+          <section class="gen-sheet" id="vec-plane" aria-label="Plano com as setas"></section>
+          <section class="gen-sheet" id="vec-rank" aria-label="Ranking dos textos" hidden></section>
+        </div>
+        <div class="simbar" id="simbar"></div>
+      </section>
+
+      <aside class="side" aria-label="Painéis do laboratório">
+        <section class="card" id="panel-measures"></section>
+        <section class="card" id="panel-embed"></section>
+        <section class="card" id="panel-work"></section>
+      </aside>
+    </main>
+
+    <footer class="dock" id="challenge-dock"></footer>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <noscript><p style="padding:24px">Este laboratório precisa de JavaScript para funcionar.</p></noscript>
+  <script type="module" src="js/vectors/main.js"></script>
+</body>
+</html>

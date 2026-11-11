@@ -19,12 +19,16 @@ import { encodeShare } from '../js/models/share.js';
 import { externalRequests } from './hooks/external.js';
 import { TRAIL_KEY, TRAIL_UI_KEY, MIN_EXPLAIN } from '../js/platform/progress.js';
 import { LLM_KEY } from '../js/llm/state.js';
+import { VEC_KEY } from '../js/vectors/state.js';
+import { VEC_CHALLENGES } from '../js/vectors/challenges.js';
+import { VEC_TIPS } from '../js/vectors/tips.js';
 import { EOS } from '../js/llm/ngram.js';
 import { CHALLENGES } from '../js/challenges/definitions.js';
 import { COURSE } from '../js/learn/course.js';
 
 const NOTEBOOK = 'llmlab:caderno';
-const KEYS = [TRAIL_KEY, TRAIL_UI_KEY, LLM_KEY, NOTEBOOK, 'markovlab:v3', 'markovlab:course', 'markovlab:coach'];
+const VEC_NOTEBOOK = 'vectorlab:caderno';
+const KEYS = [TRAIL_KEY, TRAIL_UI_KEY, LLM_KEY, NOTEBOOK, VEC_KEY, VEC_NOTEBOOK, 'markovlab:v3', 'markovlab:course', 'markovlab:coach'];
 const BASE = new URL('../', location.href).href;
 const out = document.getElementById('out');
 const backup = Object.fromEntries(KEYS.map((k) => [k, localStorage.getItem(k)]));
@@ -83,6 +87,11 @@ function type(el, value) {
 function slide(key, value) {
   type($(`[data-set="${key}"]`), String(value));
 }
+const handle = (key) => $(`[data-handle="${key}"]`);
+const shown = (sel) => win().getComputedStyle($(sel)).display !== 'none';
+function pressKey(el, key, opts = {}) {
+  el.dispatchEvent(new (win().KeyboardEvent)('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+}
 const generated = () => $$('#gen-line .tk-chip:not(.given)').map((c) => c.textContent);
 const bars = () => $$('.nt-row');
 const noOverflow = () => assert(doc().documentElement.scrollWidth <= doc().documentElement.clientWidth + 1, `a página passa da largura: ${doc().documentElement.scrollWidth} em ${doc().documentElement.clientWidth}`);
@@ -99,8 +108,9 @@ async function noExternalRequests(page) {
 }
 
 const LONG = 'Uma explicação escrita com as próprias palavras, comprida o bastante para contar como explicada.';
-/** Tudo da fase 0 feito: o laboratório inteiro, as leituras e as três explicações. */
+/** Tudo da fase 0 feito: os laboratórios que existem, as leituras e as três explicações. */
 const PHASE0_DONE = {
+  [VEC_KEY]: { completed: VEC_CHALLENGES.map((c) => c.id) },
   'markovlab:v3': { completed: CHALLENGES.map((c) => c.id) },
   'markovlab:course': { done: COURSE.map((s) => s.id) },
   [TRAIL_KEY]: {
@@ -129,8 +139,8 @@ function captureDownloads() {
 
 const TESTS = [
   // ── 0. Só o que é da página
-  ['as três páginas trazem a política que barra conteúdo de fora', async () => {
-    for (const page of ['index.html', 'markov.html', 'llm.html']) {
+  ['as quatro páginas trazem a política que barra conteúdo de fora', async () => {
+    for (const page of ['index.html', 'markov.html', 'llm.html', 'vectors.html']) {
       const source = await (await fetch(`${BASE}${page}`)).text();
       const policy = source.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] || '';
       assert(/default-src 'self'/.test(policy), `${page}: sem política`);
@@ -199,7 +209,9 @@ const TESTS = [
     assert(/^3 de 17/.test(text('[data-item="lab-markov"] [data-lab-count]')), text('[data-item="lab-markov"] [data-lab-count]'));
     assert(/^0 de 7/.test(text('[data-item="lab-llm"] [data-lab-count]')), text('[data-item="lab-llm"] [data-lab-count]'));
     same($('[data-item="lab-markov"] [data-open]').getAttribute('href'), 'markov.html', 'link do laboratório');
-    assert(!$('[data-item="lab-vetores"] [data-open]'), 'laboratório planejado não tem botão de abrir');
+    assert(/^0 de 7/.test(text('[data-item="lab-vetores"] [data-lab-count]')), text('[data-item="lab-vetores"] [data-lab-count]'));
+    same($('[data-item="lab-vetores"] [data-open]').getAttribute('href'), 'vectors.html', 'link do laboratório de vetores');
+    assert(!$('[data-item="lab-gradiente"] [data-open]'), 'laboratório planejado não tem botão de abrir');
   }],
   ['trilha: "Ir para lá" leva ao próximo passo', async () => {
     await boot('index.html');
@@ -344,9 +356,9 @@ const TESTS = [
     same($$('.toast').filter((t) => /Não consegui guardar/.test(t.textContent)).length, 1, 'avisa uma vez só');
     assert($('[data-item="3b1b-algebra"]').classList.contains('done'), 'a página continua funcionando sem guardar');
   }],
-  ['atalhos: o "?" abre a lista nas três páginas, e dentro de um campo é só um caractere', async () => {
+  ['atalhos: o "?" abre a lista nas quatro páginas, e dentro de um campo é só um caractere', async () => {
     const press = (key, target = doc().body, opts = {}) => target.dispatchEvent(new (win().KeyboardEvent)('keydown', { key, bubbles: true, cancelable: true, ...opts }));
-    for (const [page, extra] of [['index.html', 'Trilha'], ['markov.html', 'Desfaz'], ['llm.html', 'Sorteia']]) {
+    for (const [page, extra] of [['index.html', 'Trilha'], ['markov.html', 'Desfaz'], ['llm.html', 'Sorteia'], ['vectors.html', 'Setas do plano']]) {
       await boot(page, { storage: { 'markovlab:v3': { level: 3 } } });
       await ready();
       assert(!$('dialog.shortcuts[open]'), `${page}: nada aberto de início`);
@@ -617,6 +629,193 @@ const TESTS = [
     const html = await (await fetch(`${BASE}llm.html`)).text();
     frame = document.createElement('iframe');
     frame.srcdoc = html.replace('<head>', `<head><base href="${BASE}">`).replace('src="js/llm/main.js"', 'src="js/llm/nao-existe.js"');
+    frame.style.width = '1280px';
+    frame.style.height = '800px';
+    const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+    document.getElementById('stage').appendChild(frame);
+    await loaded;
+    const box = await until(() => $('#boot-error'), 'a mensagem');
+    same(box.getAttribute('role'), 'alert', 'papel');
+  }],
+  // ── Vetores e similaridade
+  ['Vetores: abre com o exemplo, as contas à mostra e sem pedir nada a outro site', async () => {
+    await boot('vectors.html');
+    await ready();
+    same(text('#model-title'), 'Vetores no plano');
+    assert(shown('[data-vec="a"]') && shown('[data-vec="b"]') && !shown('[data-vec="q"]'), 'só A e B aparecem no modo "Duas setas"');
+    assert(shown('.arc') && text('.arc-label') === '53°', `arco do ângulo: ${text('.arc-label')}`);
+    assert(/3,0 × 1,0 \+ 1,0 × 3,0 = 6,00/.test(text('#panel-measures')), text('#panel-measures'));
+    assert(/= 0,60/.test(text('#panel-measures')) && /53°/.test(text('#panel-measures')), 'cosseno e ângulo');
+    assert($('#vec-rank').hidden, 'o ranking só existe no modo Busca');
+    await until(() => win().katex, 'o KaTeX carregar');
+    await until(() => $('#panel-embed .katex'), 'a fórmula do embedding aparecer');
+    await noExternalRequests('vectors.html');
+    assert(!$('#boot-error'), 'sem mensagem de erro');
+    assert(!/NaN|undefined/.test(doc().body.textContent), 'nenhum número quebrado na tela');
+    namedControls();
+    same($$('.side-nav [data-panel]').map((b) => b.textContent).join(), 'Medidas,Embedding real,No trabalho', 'painéis');
+    same($('.top-actions a.text-btn').getAttribute('href'), 'index.html', 'volta para a trilha');
+  }],
+  ['Vetores: o teclado move a ponta em foco e as medidas acompanham', async () => {
+    await boot('vectors.html');
+    await ready();
+    const b = handle('b');
+    b.focus();
+    same(doc().activeElement, b, 'a ponta recebe foco');
+    pressKey(b, 'ArrowRight');
+    assert(/B = \(1,1; 3,0\)/.test(text('#panel-measures')), text('#panel-measures'));
+    assert(/1,1 para o lado e 3,0 para cima/.test(handle('b').getAttribute('aria-label')), handle('b').getAttribute('aria-label'));
+    pressKey(b, 'ArrowUp', { shiftKey: true });
+    assert(/B = \(1,1; 3,5\)/.test(text('#panel-measures')), 'Shift anda de 0,5 em 0,5');
+    same(doc().activeElement, b, 'redesenhar as fichas não tira o foco da ponta');
+    for (let i = 0; i < 80; i++) pressKey(b, 'ArrowRight');
+    assert(/B = \(5,0; 3,5\)/.test(text('#panel-measures')), 'a ponta para na borda do plano');
+    await until(() => saved(VEC_KEY)?.b?.join() === '5,3.5', 'salvar');
+  }],
+  ['Vetores: arrastar com o ponteiro move a ponta e para na borda do plano', async () => {
+    await boot('vectors.html');
+    await ready();
+    const svg = $('#vec-plane svg');
+    const r = svg.getBoundingClientRect();
+    const at = (x, y) => ({ clientX: r.left + ((240 + x * 40) / 480) * r.width, clientY: r.top + ((240 - y * 40) / 480) * r.height });
+    const ptr = (type, target, x, y) => target.dispatchEvent(new (win().PointerEvent)(type, { bubbles: true, cancelable: true, pointerId: 7, isPrimary: true, ...at(x, y) }));
+    ptr('pointerdown', handle('b'), 1, 3);
+    ptr('pointermove', svg, -3, 2);
+    assert(/B = \(-3,0; 2,0\)/.test(text('#panel-measures')), text('#panel-measures'));
+    ptr('pointermove', svg, 9, -9);
+    assert(/B = \(5,0; -5,0\)/.test(text('#panel-measures')), 'fora do plano a ponta fica na borda');
+    ptr('pointerup', svg, 9, -9);
+    ptr('pointermove', svg, 0, 0);
+    assert(/B = \(5,0; -5,0\)/.test(text('#panel-measures')), 'soltar encerra o arrasto');
+    ptr('pointermove', svg, -1, -1);
+    same(handle('a').getAttribute('aria-label').includes('3,0 para o lado'), true, 'A não saiu do lugar');
+  }],
+  ['Vetores: seta na origem não tem direção, e a tela diz isso em vez de mostrar NaN', async () => {
+    await boot('vectors.html', { storage: { [VEC_KEY]: { a: [0, 0] } } });
+    await ready();
+    assert(/sem direção/.test(text('#panel-measures')) && /na origem/.test(text('.vm-read')), text('#panel-measures'));
+    assert(!shown('.arc'), 'sem arco quando não há ângulo');
+    assert(!/NaN|undefined/.test(doc().body.textContent), 'nenhum número quebrado na tela');
+  }],
+  ['Vetores: "Voltar ao exemplo" devolve as setas ao lugar de partida', async () => {
+    await boot('vectors.html');
+    await ready();
+    pressKey(handle('b'), 'ArrowLeft', { shiftKey: true });
+    pressKey(handle('a'), 'ArrowDown', { shiftKey: true });
+    assert(/B = \(0,5; 3,0\)/.test(text('#panel-measures')), 'mexeu');
+    $('[data-reset]').click();
+    assert(/A = \(3,0; 1,0\) · B = \(1,0; 3,0\)/.test(text('#panel-measures')), text('#panel-measures'));
+  }],
+  ['Vetores: o modo Busca mostra a consulta, os dez textos e o ranking', async () => {
+    await boot('vectors.html');
+    await ready();
+    $('[data-mode="search"]').click();
+    same($('[data-mode="search"]').getAttribute('aria-pressed'), 'true', 'botão marcado');
+    assert(shown('[data-vec="q"]') && !shown('[data-vec="a"]') && !shown('.arc'), 'só a consulta aparece');
+    assert(!$('#vec-rank').hidden, 'ranking visível');
+    same($$('.doc').filter((g) => win().getComputedStyle(g).display !== 'none').length, 10, 'dez textos no plano');
+    same($$('.vr-row').length, 10, 'dez linhas no ranking');
+    same(text('.vr-row.top .vr-text'), 'Manutenção preventiva da máquina', 'o mais parecido com a consulta de partida');
+    same($$('.doc.best').length, 1, 'um texto destacado no plano');
+    assert(/escolhem o mesmo texto/.test(text('[data-verdict]')), text('[data-verdict]'));
+    $('[data-metric="distance"]').click();
+    same($('[data-metric="distance"]').getAttribute('aria-pressed'), 'true', 'medida marcada');
+    same($$('.vr-row').length, 10, 'ranking continua inteiro');
+    assert(/O que cada medida escolhe/.test(text('#panel-measures')), text('#panel-measures'));
+    pressKey(handle('q'), 'ArrowUp', { shiftKey: true });
+    assert(/Consulta Q = \(-3,0; 1,0\)/.test(text('#panel-measures')), text('#panel-measures'));
+    $('[data-mode="pair"]').click();
+    assert($('#vec-rank').hidden && shown('[data-vec="a"]'), 'volta ao modo anterior');
+  }],
+  ['Vetores: quando cosseno e produto escalar discordam, a tela diz qual premiou o texto comprido', async () => {
+    await boot('vectors.html', { storage: { [VEC_KEY]: { mode: 'search', q: [2, 0.4] } } });
+    await ready();
+    assert(/Os métodos discordam/.test(text('[data-verdict]')), text('[data-verdict]'));
+    assert(/NF-e com erro de validação/.test(text('[data-verdict]')) && /Nota fiscal rejeitada/.test(text('[data-verdict]')), 'nomeia os dois textos');
+    assert(/discordam/.test(text('#panel-measures .vm-read.differ')), 'a ficha de medidas também avisa');
+    $('[data-metric="dot"]').click();
+    same(text('.vr-row.top .vr-text'), 'Nota fiscal rejeitada pela Sefaz', 'pelo produto escalar vence o mais comprido');
+    $('[data-metric="cosine"]').click();
+    same(text('.vr-row.top .vr-text'), 'NF-e com erro de validação', 'pelo cosseno vence o de mesma direção');
+  }],
+  ['Vetores: consulta na origem não escolhe ninguém', async () => {
+    await boot('vectors.html', { storage: { [VEC_KEY]: { mode: 'search', q: [0, 0] } } });
+    await ready();
+    assert(/na origem/.test(text('[data-verdict]')), text('[data-verdict]'));
+    same($$('.vr-row.top').length, 0, 'nenhuma linha destacada');
+    same($$('.doc.best').length, 0, 'nenhum texto destacado no plano');
+    assert(!/NaN|undefined/.test(doc().body.textContent), 'nenhum número quebrado na tela');
+  }],
+  ['Vetores: acertar o quiz conclui o desafio e a trilha passa a contar', async () => {
+    await boot('vectors.html');
+    await ready();
+    const options = $$('.quiz-opts button');
+    options[0].click();
+    assert(options[0].classList.contains('wrong') && text('[data-explain]'), 'errada explica o erro');
+    $$('.quiz-opts button')[1].click();
+    await until(() => $('.ch-num.done'), 'o desafio ficar concluído');
+    assert(/cosseno 1|Mesma direção dá cosseno 1/.test(text('.ch-desc')), 'mostra o que foi aprendido');
+    await until(() => saved(VEC_KEY)?.completed?.includes('mesma-direcao'), 'salvar');
+    await boot('index.html', { storage: { [VEC_KEY]: saved(VEC_KEY) } });
+    await ready();
+    assert(/^1 de 7/.test(text('[data-item="lab-vetores"] [data-lab-count]')), text('[data-item="lab-vetores"] [data-lab-count]'));
+  }],
+  ['Vetores: desafio de arrastar se conclui quando as setas ficam perpendiculares', async () => {
+    await boot('vectors.html');
+    await ready();
+    $('[data-go="perpendiculares"]').click();
+    assert(/Nada em comum/.test(text('.ch-title h3')), text('.ch-title h3'));
+    const b = handle('b');
+    for (let i = 0; i < 3; i++) pressKey(b, 'ArrowLeft', { shiftKey: true });
+    assert(!$('.ch-num.done'), 'ainda falta um pouco');
+    assert(/cosseno agora/.test(text('[data-live]')), text('[data-live]'));
+    pressKey(b, 'ArrowLeft', { shiftKey: true });
+    await until(() => $('.ch-num.done'), 'o desafio ficar concluído');
+    await until(() => saved(VEC_KEY)?.completed?.includes('perpendiculares'), 'salvar');
+  }],
+  ['Vetores: o que foi feito volta ao recarregar, e salvamento quebrado não derruba a página', async () => {
+    await boot('vectors.html');
+    await ready();
+    $('[data-mode="search"]').click();
+    $('[data-metric="dot"]').click();
+    pressKey(handle('q'), 'ArrowRight', { shiftKey: true });
+    await reload(); // sem esperar o salvamento automático
+    same($('[data-mode="search"]').getAttribute('aria-pressed'), 'true', 'modo');
+    same($('[data-metric="dot"]').getAttribute('aria-pressed'), 'true', 'medida');
+    assert(/Consulta Q = \(-2,5; 0,5\)/.test(text('#panel-measures')), text('#panel-measures'));
+    await boot('vectors.html', { storage: { [VEC_KEY]: { mode: 'xx', a: 'foo', b: [1], q: [1, 2, 3], completed: 7 } } });
+    await ready();
+    assert(!$('#boot-error'), 'a página abre mesmo com dados estranhos');
+    assert(/A = \(3,0; 1,0\) · B = \(1,0; 3,0\)/.test(text('#panel-measures')), 'volta ao exemplo');
+  }],
+  ['Vetores: "?" abre o caderno no conceito e conta como lido', async () => {
+    await boot('vectors.html');
+    await ready();
+    same(text('#nb-count'), `0/${Object.keys(VEC_TIPS).length}`, 'contador');
+    $('#panel-measures [data-tip="cosseno"]').click();
+    const dlg = await until(() => $('dialog.notebook[open]'), 'o caderno abrir');
+    assert(dlg.querySelector('details[data-id="cosseno"]').open, 'conceito aberto');
+    await until(() => /0,60/.test(dlg.querySelector('details[data-id="cosseno"] .nb-body').textContent), 'o texto usar os números que estão na tela');
+    same(text('#nb-count'), `1/${Object.keys(VEC_TIPS).length}`, 'contador depois de ler');
+    assert(saved(VEC_NOTEBOOK).seen.includes('cosseno'), 'salvo');
+    dlg.querySelector('[data-close]').click();
+    assert(!$('dialog.notebook[open]'), 'fecha');
+  }],
+  ['Vetores: cabe na tela de um celular nos dois modos', async () => {
+    await boot('vectors.html', { width: 360, height: 700 });
+    await ready();
+    noOverflow();
+    const plane = $('#vec-plane svg').getBoundingClientRect();
+    assert(plane.width >= 285 && plane.width <= 360, `largura do plano: ${plane.width}`);
+    $('[data-mode="search"]').click();
+    noOverflow();
+    namedControls();
+  }],
+  ['Vetores: módulo que não carrega mostra uma mensagem', async () => {
+    frame?.remove();
+    const html = await (await fetch(`${BASE}vectors.html`)).text();
+    frame = document.createElement('iframe');
+    frame.srcdoc = html.replace('<head>', `<head><base href="${BASE}">`).replace('src="js/vectors/main.js"', 'src="js/vectors/nao-existe.js"');
     frame.style.width = '1280px';
     frame.style.height = '800px';
     const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));

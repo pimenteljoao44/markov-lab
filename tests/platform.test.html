@@ -9,7 +9,7 @@
 </style>
 </head>
 <body>
-<h1>Plataforma: trilha, progresso e o motor do laboratório de LLM (os fluxos estão em <a href="pages.test.html">pages.test.html</a>)</h1>
+<h1>Plataforma: trilha, progresso e os motores dos laboratórios de LLM e de vetores (os fluxos estão em <a href="pages.test.html">pages.test.html</a>)</h1>
 <pre id="out"></pre>
 <script type="module">
 import { createStore } from '../js/platform/tinyStore.js';
@@ -27,6 +27,10 @@ import { MIN_TOKENS } from '../js/llm/components/CorpusDialog.js';
 import { decodeShare } from '../js/models/share.js';
 import { analyze } from '../js/math/analyze.js';
 import { mulberry32 } from '../js/math/rng.js';
+import { dot, norm, distance, normalize, cosine, angleDegrees, isZero, rank, topOf, METRICS, DOCS } from '../js/vectors/engine.js';
+import { createVectorStore, sanitizeVector, snap, VEC_KEY, LIMIT, DEFAULTS as VEC_DEFAULTS } from '../js/vectors/state.js';
+import { VEC_CHALLENGES, context as vecContext } from '../js/vectors/challenges.js';
+import { VEC_TIPS, VEC_TOPICS } from '../js/vectors/tips.js';
 
 const out = document.getElementById('out');
 let passed = 0, failed = 0;
@@ -479,7 +483,7 @@ t('trilha: nenhum texto cita empresa', () => {
 });
 t('laboratórios: os prontos dizem onde guardam o progresso; os planejados não têm endereço', () => {
   const ready = Object.entries(LABS).filter(([, lab]) => lab.href);
-  same(ready.map(([id]) => id).join(), 'markov,llm');
+  same(ready.map(([id]) => id).join(), 'markov,llm,vetores');
   for (const [id, lab] of Object.entries(LABS)) {
     assert(lab.title && lab.blurb, `${id}: texto`);
     if (!lab.href) { assert(!lab.progress, `${id}: planejado não tem progresso`); continue; }
@@ -535,7 +539,8 @@ t('progresso do laboratório: lê o que o laboratório salvou, sem contar duplic
   same(labProgress('markov', storage).done, 3);
   same(JSON.stringify(labProgress('llm', storage)), JSON.stringify({ done: LLM_CHALLENGES.length, total: LLM_CHALLENGES.length }));
   same(itemProgress(item('lab-llm'), loadTrail(storage), storage), 1);
-  same(JSON.stringify(labProgress('vetores', storage)), JSON.stringify({ done: 0, total: 0 }), 'planejado');
+  same(JSON.stringify(labProgress('vetores', storage)), JSON.stringify({ done: 0, total: VEC_CHALLENGES.length }), 'sem nada salvo');
+  same(JSON.stringify(labProgress('gradiente', storage)), JSON.stringify({ done: 0, total: 0 }), 'planejado');
   same(labProgress('markov', memory({ 'markovlab:v3': '{quebrado' })).done, 0, 'corrompido');
 });
 t('progresso da fase: laboratório planejado não entra na conta', () => {
@@ -568,7 +573,12 @@ t('próximo passo: o primeiro item aberto, na ordem; pula laboratório planejado
   trail.checks.add('khan-estatistica');
   trail.notes['explica-processos'] = 'x'.repeat(MIN_EXPLAIN);
   trail.checks.add('3b1b-algebra');
-  same(nextStep(trail, storage).item.id, 'explica-vetores', 'o laboratório de vetores ainda não existe');
+  same(nextStep(trail, storage).item.id, 'lab-vetores', 'o laboratório de vetores já existe e conta');
+  storage.setItem(VEC_KEY, JSON.stringify({ completed: VEC_CHALLENGES.map((c) => c.id) }));
+  same(nextStep(trail, storage).item.id, 'explica-vetores');
+  trail.notes['explica-vetores'] = 'x'.repeat(MIN_EXPLAIN);
+  trail.checks.add('3b1b-calculo');
+  same(nextStep(trail, storage).item.id, 'explica-gradiente', 'o laboratório de gradiente ainda não existe');
 });
 t('cópia: leva tudo e traz de volta em outro navegador', () => {
   const from = memory({ [TRAIL_KEY]: { checks: ['lgpd'], notes: {} }, [LLM_KEY]: { completed: ['janela'] }, 'markovlab:v3': { level: 2 }, 'outra-coisa': 'não é do caderno' });
@@ -601,6 +611,211 @@ t('explicações: saem como um documento, na ordem da trilha, só com o que foi 
   assert(text.includes('### Probabilidade e processos') && text.includes('Vinte sorteios é pouco.'), 'módulo e resposta');
   assert(text.includes(`**${item('explica-mecanica').title}**\n\nPorque ele sorteia o próximo token.`), 'pergunta e resposta, sem espaços nas pontas');
   assert(!text.includes('### Vetores e similaridade') && !text.includes('fica de fora') && !text.includes('## Fase 2'), 'nada vazio nem desconhecido');
+});
+
+// ── laboratório de vetores: motor
+const C2 = (a, b) => cosine(a, b);
+t('vetores: produto escalar, tamanho e distância batem com a conta de cabeça', () => {
+  same(dot([3, 1], [1, 3]), 6);
+  same(dot([1, 0], [0, 1]), 0, 'perpendiculares');
+  same(dot([2, 1], [-2, -1]), -5, 'lados contrários');
+  same(norm([3, 4]), 5);
+  same(distance([1, 1], [4, 5]), 5);
+  assert(near(norm(normalize([3, 4])), 1), 'normalizado tem tamanho 1');
+  same(String(normalize([0, 0])), '0,0', 'vetor nulo continua nulo, sem NaN');
+});
+t('vetores: cosseno ignora o tamanho e só olha a direção', () => {
+  assert(near(C2([2, 1], [4, 2]), 1), 'mesma direção, dobro do tamanho');
+  assert(near(C2([2, 1], [0.02, 0.01]), 1), 'mesma direção, centésimo do tamanho');
+  assert(near(C2([3, 1], [-1, 3]), 0), 'perpendiculares');
+  assert(near(C2([3, 1], [-3, -1]), -1), 'lados contrários');
+  assert(near(angleDegrees([1, 0], [0, 1]), 90) && near(angleDegrees([1, 0], [1, 0]), 0) && near(angleDegrees([1, 0], [-1, 0]), 180), 'ângulos');
+  assert(C2([0.1, 0.2], [0.3, 0.6]) <= 1 && C2([0.1, 0.2], [-0.3, -0.6]) >= -1, 'arredondamento não passa de ±1');
+});
+t('vetores: vetor nulo não tem direção; o cosseno vira 0 e nunca NaN', () => {
+  assert(isZero([0, 0]) && !isZero([0, 0.01]), 'isZero');
+  same(C2([0, 0], [1, 2]), 0);
+  same(C2([1, 2], [0, 0]), 0);
+  same(angleDegrees([0, 0], [1, 2]), 90, 'sem direção, o ângulo cai no meio');
+});
+t('vetores: ranking ordena pelo melhor, e na distância o melhor é o menor', () => {
+  const docs = [{ id: 'a', v: [1, 0] }, { id: 'b', v: [0, 1] }, { id: 'c', v: [-1, 0] }];
+  same(rank([1, 0.1], docs, 'cosine').map((d) => d.id).join(), 'a,b,c');
+  same(rank([1, 0.1], docs, 'distance').map((d) => d.id).join(), 'a,b,c', 'perto primeiro');
+  same(rank([-1, 0], docs, 'dot')[0].id, 'c');
+  same(rank([1, 0.1], docs, 'cosine').map((d) => d.rank).join(), '1,2,3');
+  same(topOf([0, 1], [{ id: 'x', v: [1, 1] }, { id: 'y', v: [2, 2] }], 'cosine').id, 'x', 'empate fica com quem vem primeiro');
+  assert(Object.keys(METRICS).every((m) => METRICS[m].label && ['max', 'min'].includes(METRICS[m].best)), 'toda medida diz o que é melhor');
+});
+t('vetores: os dez textos cabem no plano, têm id único e dois deles discordam por tamanho', () => {
+  same(DOCS.length, 10);
+  same(new Set(DOCS.map((d) => d.id)).size, 10, 'ids únicos');
+  assert(DOCS.every((d) => d.v.every((x) => Math.abs(x) <= LIMIT) && d.text.length > 5), 'dentro do plano');
+  const [nf, nfe] = [DOCS[0], DOCS[1]];
+  assert(C2(nf.v, nfe.v) > 0.999, 'mesmo assunto, mesma direção');
+  assert(norm(nf.v) > 1.8 * norm(nfe.v), 'mas um é bem mais comprido');
+});
+
+// ── laboratório de vetores: estado
+const vfresh = (initial) => createVectorStore(memory(initial));
+t('vetores: começa no exemplo e aceita só vetores de dois números', () => {
+  const s = vfresh().get();
+  same(JSON.stringify([s.a, s.b, s.q, s.mode, s.metric]), JSON.stringify([VEC_DEFAULTS.a, VEC_DEFAULTS.b, VEC_DEFAULTS.q, 'pair', 'cosine']));
+  same(JSON.stringify(sanitizeVector([1.234, -9], [0, 0])), JSON.stringify([1.2, -5]), 'arredonda em 0,1 e segura dentro do plano');
+  for (const bad of [null, undefined, 'a', [1], [1, 2, 3], [1, 'x'], [NaN, 1], [Infinity, 0], {}]) {
+    same(JSON.stringify(sanitizeVector(bad, [7, 8])), '[7,8]', `entrada ${JSON.stringify(bad)}`);
+  }
+  same(snap(99), LIMIT);
+  assert(sanitizeVector(null, [1, 2]) !== sanitizeVector(null, [1, 2]), 'devolve cópia, não o padrão compartilhado');
+});
+t('vetores: salvamento ruim, editado à mão ou de outra versão não quebra a página', () => {
+  for (const raw of ['{quebrado', 'null', '5', '[]', { mode: 'xx', a: 'foo', b: [1], q: [1, 2, 3], metric: 'raiz', completed: 'sim', active: 4 }, { completed: [1, 'mesma-direcao', null] }]) {
+    const s = createVectorStore(memory({ [VEC_KEY]: raw })).get();
+    same(s.mode, 'pair', 'modo');
+    same(s.metric, 'cosine', 'medida');
+    same(JSON.stringify(s.a), JSON.stringify(VEC_DEFAULTS.a), 'A');
+    assert(Array.isArray(s.challenges.completed) && s.challenges.completed.every((x) => typeof x === 'string'), 'concluídos');
+    assert(s.challenges.active === null || typeof s.challenges.active === 'string', 'ativo');
+  }
+});
+t('vetores: o que a pessoa fez volta ao reabrir', () => {
+  const storage = memory();
+  const store = createVectorStore(storage);
+  store.update((s) => {
+    s.mode = 'search';
+    s.metric = 'dot';
+    s.a = [-2.5, 4];
+    s.q = [2, 0.4];
+    s.challenges.completed.push('opostas');
+  }, 'vec');
+  store.save();
+  const again = createVectorStore(storage).get();
+  same(again.mode, 'search');
+  same(again.metric, 'dot');
+  same(JSON.stringify(again.a), '[-2.5,4]');
+  same(JSON.stringify(again.q), '[2,0.4]');
+  same(again.challenges.completed.join(), 'opostas');
+});
+t('vetores: as contas da tela vêm do motor e acompanham o que se arrasta', () => {
+  const store = vfresh();
+  let d = store.get().derived;
+  same(d.pair.dot, 6, 'A·B no exemplo');
+  assert(near(d.pair.cos, 0.6) && near(d.pair.angle, 53.13010235415598, 1e-9), 'cosseno 0,6 e ângulo de 53°');
+  assert(!d.pair.zero && !d.queryZero, 'sem vetor nulo');
+  same(d.rank.length, DOCS.length);
+  store.update((s) => (s.a = [0, 0]), 'vec');
+  d = store.get().derived;
+  assert(d.pair.zero && d.pair.cos === 0 && !Number.isNaN(d.pair.angle), 'vetor nulo avisa em vez de dar NaN');
+  store.update((s) => (s.q = [0, 0]), 'vec');
+  assert(store.get().derived.queryZero, 'consulta nula');
+});
+t('vetores: a consulta do exemplo faz as medidas concordarem, e uma consulta no assunto 2 as faz discordar', () => {
+  const store = vfresh();
+  assert(!store.get().derived.disagree, 'no começo cosseno e produto escalar concordam, senão o desafio nasceria resolvido');
+  same(store.get().derived.tops.cosine.id, 'manutencao');
+  store.update((s) => (s.q = [2, 0.4]), 'vec');
+  const d = store.get().derived;
+  assert(d.disagree, 'discordam');
+  same(d.tops.cosine.id, 'nfe-erro', 'o cosseno escolhe o texto de mesma direção');
+  same(d.tops.dot.id, 'nf-rejeitada', 'o produto escalar escolhe o mais comprido');
+});
+
+// ── laboratório de vetores: desafios
+const vcheck = (id, store) => VEC_CHALLENGES.find((c) => c.id === id).check(vecContext(store.get()));
+const vset = (store, patch) => store.update((s) => Object.assign(s, patch), 'vec');
+t('vetores/desafios: têm tudo que o dock precisa e nenhum nasce resolvido', () => {
+  const ids = new Set();
+  const ctx = vecContext(vfresh().get());
+  assert(VEC_CHALLENGES.length >= 6, 'desafios suficientes');
+  for (const c of VEC_CHALLENGES) {
+    assert(!ids.has(c.id), `id repetido: ${c.id}`);
+    ids.add(c.id);
+    assert(c.title && c.desc && c.success && c.hints.length, `${c.id}: texto faltando`);
+    if (c.type === 'quiz') {
+      const { options } = c.quiz(ctx);
+      same(options.filter((o) => o.correct).length, 1, `${c.id}: resposta certa`);
+      assert(options.every((o) => o.correct || o.why), `${c.id}: toda errada explica o erro`);
+    } else {
+      const res = c.check(ctx);
+      assert(res.progress >= 0 && res.progress <= 1, `${c.id}: progresso ${res.progress}`);
+      assert(!res.done, `${c.id}: não pode começar concluído`);
+      assert(typeof res.live === 'string' && res.live, `${c.id}: texto ao vivo`);
+    }
+  }
+  for (const id of ['mesma-direcao', 'perpendiculares', 'opostas', 'tamanho-importa', 'busca-discorda', 'busca-boleto', 'distancia']) assert(ids.has(id), `id publicado sumiu: ${id}`);
+});
+t('vetores/desafios: perpendiculares, opostas e mesma direção só contam com setas de verdade', () => {
+  const store = vfresh();
+  vset(store, { a: [3, 1], b: [-1, 3] });
+  assert(vcheck('perpendiculares', store).done, 'L perfeito');
+  vset(store, { a: [3, 1], b: [-0.1, 0.3] });
+  assert(!vcheck('perpendiculares', store).done, 'seta menor que 1 não vale');
+  vset(store, { a: [0, 0], b: [3, 0] });
+  assert(!vcheck('perpendiculares', store).done, 'seta na origem não vale');
+  vset(store, { a: [3, 1], b: [-3, -1] });
+  assert(vcheck('opostas', store).done, 'lados contrários');
+  vset(store, { a: [3, 1], b: [-3, 1] });
+  assert(!vcheck('opostas', store).done, 'não tão opostas');
+  vset(store, { a: [4, 2], b: [4, 2] });
+  assert(!vcheck('tamanho-importa', store).done, 'produto igual a 20 ainda não passa de 20');
+  vset(store, { a: [4, 4], b: [4, 4] });
+  assert(vcheck('tamanho-importa', store).done, `mesma direção com produto ${dot([4, 4], [4, 4])}`);
+  vset(store, { a: [0.5, 0.2], b: [1, 0.4] });
+  assert(!vcheck('tamanho-importa', store).done, 'mesma direção mas produto pequeno');
+  vset(store, { mode: 'search', a: [3, 1], b: [-1, 3] });
+  assert(!vcheck('perpendiculares', store).done, 'no modo busca não conta');
+});
+t('vetores/desafios: busca — discordância e boleto', () => {
+  const store = vfresh();
+  assert(!vcheck('busca-discorda', store).done, 'no modo "Duas setas" não conta');
+  vset(store, { mode: 'search' });
+  assert(!vcheck('busca-discorda', store).done, 'consulta padrão: concordam');
+  store.update((s) => (s.q = [2, 0.4]), 'vec');
+  assert(vcheck('busca-discorda', store).done, 'discordam');
+  store.update((s) => (s.q = [0, 0]), 'vec');
+  assert(!vcheck('busca-discorda', store).done, 'consulta nula não vale');
+  store.update((s) => (s.q = [0.6, 3.8]), 'vec');
+  assert(vcheck('busca-boleto', store).done, 'boleto em primeiro pelo cosseno');
+  vset(store, { metric: 'dot' });
+  assert(!vcheck('busca-boleto', store).done, 'tem de ser pelo cosseno');
+});
+
+// ── laboratório de vetores: caderno
+t('vetores/caderno: todo conceito tem assunto, texto e números reais, mesmo com vetor nulo', () => {
+  const stores = [vfresh(), vfresh(), vfresh()];
+  stores[1].update((s) => { s.a = [0, 0]; s.q = [0, 0]; s.mode = 'search'; }, 'vec');
+  stores[2].update((s) => { s.a = [-5, 5]; s.b = [5, -5]; s.q = [2, 0.4]; }, 'vec');
+  for (const [id, tip] of Object.entries(VEC_TIPS)) {
+    assert(VEC_TOPICS.includes(tip.topic), `${id}: assunto "${tip.topic}"`);
+    assert(tip.title, `${id}: título`);
+    for (const store of stores) {
+      const ctx = vecContext(store.get());
+      const html = tip.body(ctx) + (tip.math ? tip.math(ctx) : '');
+      assert(html.length > 40, `${id}: texto curto`);
+      assert(!/undefined|NaN|\[object/.test(html), `${id}: ${html.match(/.{0,30}(undefined|NaN|\[object).{0,30}/)?.[0]}`);
+    }
+  }
+  for (const topic of VEC_TOPICS) assert(Object.values(VEC_TIPS).some((tip) => tip.topic === topic), `assunto vazio: ${topic}`);
+});
+t('vetores/caderno: todo botão "?" do laboratório aponta para um conceito que existe', async () => {
+  const files = ['js/vectors/main.js', 'js/vectors/components/Stage.js', 'js/vectors/components/Panels.js', 'vectors.html'];
+  let found = 0;
+  for (const file of files) {
+    const source = await (await fetch(`../${file}`)).text();
+    for (const [, id] of source.matchAll(/data-tip="([a-z]+)"/g)) {
+      found++;
+      assert(VEC_TIPS[id], `${file}: conceito "${id}" não existe no caderno`);
+    }
+    for (const [, id] of source.matchAll(/help\('([a-z]+)'/g)) {
+      found++;
+      assert(VEC_TIPS[id], `${file}: conceito "${id}" não existe no caderno`);
+    }
+    for (const [, id] of source.matchAll(/(?:row|pick)\([^\n]*?'([a-z]+)', 'Explicar/g)) {
+      found++;
+      assert(VEC_TIPS[id], `${file}: conceito "${id}" não existe no caderno`);
+    }
+  }
+  assert(found >= 8, `só ${found} botões encontrados: a busca precisa ser revista`);
 });
 
 for (const run of pending) await run();

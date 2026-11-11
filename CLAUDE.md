@@ -29,4 +29,4 @@ python tests/run.py            # roda as quatro páginas de teste num navegador 
 
 ## Próximos laboratórios
 
-Estão registrados em `js/platform/labs.js` sem `href` e já aparecem na trilha como "em construção": vetores e similaridade, descida de gradiente, recuperação, laço do agente e simulador de permissão. Um por vez, na ordem em que o estudo chegar neles.
+Estão registrados em `js/platform/labs.js` sem `href` e já aparecem na trilha como "em construção": descida de gradiente, recuperação, laço do agente e simulador de permissão. Um por vez, na ordem em que o estudo chegar neles.

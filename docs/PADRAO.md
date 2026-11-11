@@ -31,8 +31,9 @@ Se um conteúdo novo não cabe nessa forma, ele ainda não está pronto para ent
 index.html          a trilha (página inicial)
 markov.html         Laboratório de Markov
 llm.html            Do Markov ao LLM
+vectors.html        Vetores e similaridade
 js/platform/        o que é comum: trilha, progresso, registro de laboratórios, store, caderno e dock
-js/llm/             um laboratório: motor, estado, desafios, caderno, componentes
+js/llm/, js/vectors/ um laboratório cada: motor, estado, desafios, caderno, componentes
 js/math, js/models, js/coach, js/components, js/levels, js/challenges, js/learn
                     o Laboratório de Markov (anterior à plataforma; mantém a estrutura original)
 css/tokens.css      cores, fontes e raios; nenhum outro arquivo define cor solta sem motivo

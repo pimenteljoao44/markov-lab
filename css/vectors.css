@@ -1,0 +1,80 @@
+/* Laboratório "Vetores e similaridade". Usa as folhas, fichas e botões dos outros laboratórios;
+   aqui fica só o que é próprio dele: o plano com as setas, o ranking dos textos e as contas. */
+
+/* Duas folhas lado a lado quando há largura; uma sobre a outra quando não há. */
+.vec-wrap { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: start; }
+.vs-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+.vs-head h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 16px; }
+.vs-tip { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+
+/* ───────── Plano ───────── */
+.plane-wrap { display: grid; place-items: center; margin-top: 6px; }
+/* O atributo hidden só some sozinho em elementos HTML; dentro do SVG é preciso dizer. */
+.plane [hidden] { display: none; }
+.plane { display: block; width: min(100%, 520px); height: auto; aspect-ratio: 1; touch-action: none; user-select: none; background: #fff; border: 1.5px solid var(--line); border-radius: 10px; }
+.gl { stroke: var(--line-soft); stroke-width: 1; }
+.gl.axis { stroke: var(--ink-3); stroke-width: 1.6; }
+.tick { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-3); }
+.ax { font-family: var(--mono); font-size: 12px; font-weight: 600; fill: var(--ink-2); }
+
+.vline { fill: none; stroke-width: 4; stroke-linecap: round; }
+.vec.a { --v: var(--blue); }
+.vec.b { --v: var(--lv1-ink); }
+.vec.q { --v: var(--lv2-ink); }
+.vec .vline { stroke: var(--v); }
+.vec .vhead { fill: var(--v); }
+.vec .tip { stroke: var(--v); }
+.vlabel { font-family: var(--display); font-size: 17px; text-anchor: middle; fill: var(--v); paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+.handle { cursor: grab; outline: none; }
+.handle:active { cursor: grabbing; }
+.handle .hit { fill: transparent; }
+.handle .tip { fill: #fff; stroke-width: 3; }
+.handle:focus-visible .hit { stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: 4 3; }
+.arc { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 3 3; }
+.arc-label { font-family: var(--mono); font-size: 12px; font-weight: 600; fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+
+.doc .dl { stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.doc circle { fill: #fff; stroke: var(--ink-2); stroke-width: 2; }
+.doc text { font-family: var(--mono); font-size: 12px; font-weight: 700; fill: var(--ink); text-anchor: middle; pointer-events: none; }
+.doc.best circle { fill: var(--marker); stroke: var(--ink); stroke-width: 3; }
+.doc.best .dl { stroke: var(--ink); stroke-dasharray: none; stroke-width: 2.2; }
+
+/* ───────── Ranking ───────── */
+.vr-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.vr-row {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: "n text score" ". bar bar";
+  gap: 0 10px; align-items: center; padding: 6px 8px; border: 1.5px solid transparent; border-radius: 8px;
+}
+.vr-n { grid-area: n; display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--ink-2); border-radius: 50%; font-family: var(--mono); font-size: 12px; font-weight: 700; }
+.vr-text { grid-area: text; font-size: 13.5px; }
+.vr-score { grid-area: score; font-family: var(--mono); font-size: 13px; }
+.vr-bar { grid-area: bar; height: 6px; margin-top: 4px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
+.vr-bar i { display: block; height: 100%; background: var(--ink-3); }
+.vr-row.top { border-color: var(--ink); background: var(--marker-soft); }
+.vr-row.top .vr-text { font-weight: 700; }
+.vr-row.top .vr-bar i { background: var(--ink); }
+
+/* ───────── Fichas ───────── */
+.vm-list { margin: 0; }
+.vm-row { display: grid; grid-template-columns: minmax(108px, auto) minmax(0, 1fr); gap: 4px 12px; padding: 7px 0; border-top: 1px dashed var(--line); font-size: 13.5px; }
+.vm-row dt { margin: 0; color: var(--ink-2); }
+.vm-row dd { margin: 0; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.vm-row dd small { margin-left: 4px; color: var(--ink-2); }
+.vm-read { margin: 8px 0 0; padding: 7px 10px; border-radius: 8px; background: var(--marker-soft); font-size: 13.5px; color: var(--ink); }
+.vm-read.differ { border-left: 4px solid var(--ink); }
+.work-list { margin: 0; }
+.work-list div { padding: 7px 0; border-top: 1px dashed var(--line); font-size: 13.5px; }
+.work-list dt { font-weight: 700; }
+.work-list dd { margin: 2px 0 0; color: var(--ink-2); }
+
+/* Com a página fixa na altura da janela, o plano encolhe para caber inteiro: arrastar uma ponta que está fora da vista não dá. */
+@media (min-width: 1181px) {
+  .plane { width: min(100%, 520px, max(260px, calc(100vh - 530px))); }
+}
+
+@media (max-width: 720px) {
+  .vm-row { grid-template-columns: minmax(0, 1fr); }
+  /* No celular cada pixel de lado vai para o plano: é nele que se põe o dedo. */
+  .vec-wrap { padding: 6px; }
+  .vec-wrap .gen-sheet { padding: 10px; }
+}

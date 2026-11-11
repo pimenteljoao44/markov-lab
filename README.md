@@ -11,6 +11,7 @@ Funciona direto no navegador. Não tem instalação, conta nem servidor: nada do
 | **Trilha** (`index.html`) | As cinco fases, o próximo passo e o seu progresso. É a página inicial. |
 | **Laboratório de Markov** (`markov.html`) | Modele qualquer processo como estados e chances, simule e pergunte ao modelo. |
 | **Do Markov ao LLM** (`llm.html`) | Treine um modelo de linguagem contando palavras e veja temperatura, top-k e top-p mudarem o sorteio. |
+| **Vetores e similaridade** (`vectors.html`) | Arraste setas no plano, compare produto escalar, cosseno e distância e faça uma busca por significado entre dez textos. |
 
 ### A trilha
 
@@ -26,7 +27,7 @@ Só a fase em andamento abre sozinha; as outras ficam recolhidas, com o título 
 
 O progresso fica guardado só no navegador. **Guardar cópia**, na trilha, gera um arquivo para levar a outro computador. **Baixar minhas explicações** junta tudo que você escreveu nos itens "Explique" em um documento só, para ler ou imprimir.
 
-Os laboratórios de vetores, descida de gradiente, recuperação, laço do agente e permissões aparecem na trilha como "em construção" e entram um por vez. O código das fases 2 em diante é escrito em Python, no ambiente de verdade: a trilha diz o que precisa ficar pronto e você marca quando ficou.
+Os laboratórios de descida de gradiente, recuperação, laço do agente e permissões aparecem na trilha como "em construção" e entram um por vez. O código das fases 2 em diante é escrito em Python, no ambiente de verdade: a trilha diz o que precisa ficar pronto e você marca quando ficou.
 
 ### Do Markov ao LLM
 
@@ -40,6 +41,15 @@ Um modelo de linguagem pequeno o bastante para conferir à mão. Ele lê um text
 - 7 desafios e um Caderno de teoria com 24 conceitos, sempre com os números do modelo aberto.
 
 Três textos de treino prontos, ou cole o seu. Não cole dados pessoais nem informação confidencial: o texto fica salvo no navegador.
+
+### Vetores e similaridade
+
+A geometria por trás de embeddings e da busca por significado, com duas dimensões para dar para enxergar.
+
+- **Duas setas**: arraste as pontas de A e B (ou use o teclado) e veja produto escalar, tamanhos, cosseno e ângulo mudarem, com a conta escrita por extenso.
+- **Busca**: dez textos de exemplo viram setas; arraste a consulta Q e veja o ranking pelo cosseno, pelo produto escalar ou pela distância. Quando as medidas discordam, a tela diz qual premiou o texto mais comprido.
+- **Do brinquedo ao real**: um painel explica o que muda num embedding de verdade (centenas de dimensões sem nome) e o que continua igual.
+- 7 desafios e um Caderno de teoria com 10 conceitos, sempre com os números que estão na tela.
 
 ## Laboratório de Markov
 
@@ -118,7 +128,7 @@ No Laboratório de Markov:
 | `←` `→` `↑` `↓` | A partir de um pote, percorre as setas que saem dele; `Esc` volta ao pote |
 | `Shift` + setas | Move o pote em foco |
 
-No laboratório de LLM, `Espaço` sorteia o próximo token e `Enter` gera a frase.
+No laboratório de LLM, `Espaço` sorteia o próximo token e `Enter` gera a frase. No de vetores, `Tab` passa de uma ponta para a outra, as setas movem a ponta em foco em 0,1 e `Shift` + setas movem em 0,5.
 
 ## Limites
 
@@ -136,6 +146,7 @@ O padrão de código, de design e de texto, e o passo a passo para criar um labo
 | `js/platform/` | O que é comum a todos: a trilha (`syllabus.js`), o progresso, o registro de laboratórios, o store mínimo, o caderno de teoria, o dock de desafios e o índice dos painéis laterais |
 | `js/boot.js` | Script comum, carregado antes dos módulos: encaminha links antigos de modelo e avisa quando a página não consegue iniciar |
 | `js/llm/` | Laboratório de LLM: motor de n-gramas e de sorteio, estado, desafios, caderno e componentes |
+| `js/vectors/` | Laboratório de vetores: motor (produto escalar, cosseno, distância, ranking), estado, desafios, caderno e componentes do plano |
 | `js/math/` | Motor do Laboratório de Markov, sem dependências de interface: classificação da cadeia, π, absorção, tempos de chegada e estimativa a partir de dados |
 | `js/learn/` | Trilha de aulas do Laboratório de Markov: vídeos, etapas e o trecho que explica cada conceito |
 | `js/models/` | Validação de modelos importados, catálogo da galeria, link compartilhável e histórico de desfazer |
@@ -143,7 +154,7 @@ O padrão de código, de design e de texto, e o passo a passo para criar um labo
 | `js/components/` | Diagrama (SVG e D3), bolinhas (Canvas), matriz, assistente, painéis e desafios |
 | `js/levels/`, `js/challenges/` | Conteúdo dos três níveis e dos desafios |
 | `js/store.js`, `js/vocab.js` | Estado único do Laboratório de Markov e vocabulário do modelo aberto |
-| `css/` | Estilos; `tokens.css` tem as cores e fontes, `trail.css` e `llm.css` o que é próprio de cada página, `mobile.css` o que muda em celular e telas de toque |
+| `css/` | Estilos; `tokens.css` tem as cores e fontes, `trail.css`, `llm.css` e `vectors.css` o que é próprio de cada página, `mobile.css` o que muda em celular e telas de toque |
 | `vendor/` | Bibliotecas e fontes incluídas no projeto: [D3](https://d3js.org) para o diagrama e os gráficos, [KaTeX](https://katex.org) para as fórmulas e a família Atkinson Hyperlegible. Versões e licenças em [`vendor/README.md`](vendor/README.md) |
 
 ## Testes
@@ -161,8 +172,8 @@ Alguns programas do computador, como antivírus, acrescentam um script próprio 
 Para ver os testes no navegador, abra as páginas com o servidor rodando. O título da aba mostra `OK` ou `FALHOU`:
 
 - http://localhost:5173/tests/math.test.html testa o motor do Laboratório de Markov, a leitura de dados, a validação de arquivos, o desfazer, o link compartilhado, o quiz e todos os modelos da galeria.
-- http://localhost:5173/tests/platform.test.html testa a trilha, o progresso, a cópia de segurança e o motor do laboratório de LLM: contagem, temperatura, top-k, top-p, sorteio e a ponte para o Laboratório de Markov.
+- http://localhost:5173/tests/platform.test.html testa a trilha, o progresso, a cópia de segurança e os motores dos laboratórios de LLM (contagem, temperatura, top-k, top-p, sorteio e a ponte para o Laboratório de Markov) e de vetores (produto escalar, cosseno, ranking, desafios e caderno).
 - http://localhost:5173/tests/app.test.html abre o Laboratório de Markov numa janela e percorre os fluxos da interface: links, desfazer, rascunho do assistente, importação de CSV, teclado, contraste, celular e falhas ao carregar.
-- http://localhost:5173/tests/pages.test.html faz o mesmo com a trilha e o laboratório de LLM.
+- http://localhost:5173/tests/pages.test.html faz o mesmo com a trilha e os laboratórios de LLM e de vetores.
 
 Os testes de fluxo levam cerca de um minuto cada. Os dados salvos no navegador são guardados antes e recolocados no fim; deixe a aba em primeiro plano até terminar.

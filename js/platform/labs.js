@@ -4,6 +4,8 @@ import { CHALLENGES } from '../challenges/definitions.js';
 import { COURSE } from '../learn/course.js';
 import { LLM_CHALLENGES } from '../llm/challenges.js';
 import { LLM_KEY } from '../llm/state.js';
+import { VEC_CHALLENGES } from '../vectors/challenges.js';
+import { VEC_KEY } from '../vectors/state.js';
 
 export const LABS = {
   markov: {
@@ -25,7 +27,14 @@ export const LABS = {
     counts: 'desafios',
     progress: [{ key: LLM_KEY, field: 'completed', ids: LLM_CHALLENGES.map((c) => c.id) }],
   },
-  vetores: { title: 'Vetores e similaridade', blurb: 'Produto escalar e cosseno: a geometria por trás de embeddings e da busca semântica.' },
+  vetores: {
+    title: 'Vetores e similaridade',
+    href: 'vectors.html',
+    blurb: 'Arraste setas no plano, compare produto escalar, cosseno e distância, e faça uma busca por significado.',
+    storage: [VEC_KEY, 'vectorlab:caderno'],
+    counts: 'desafios',
+    progress: [{ key: VEC_KEY, field: 'completed', ids: VEC_CHALLENGES.map((c) => c.id) }],
+  },
   gradiente: { title: 'Descida de gradiente', blurb: 'O que significa treinar um modelo, sem derivar na mão.' },
   recuperacao: { title: 'Recuperação de brinquedo', blurb: 'Cortar um documento em trechos, buscar os mais parecidos e ver onde o RAG erra.' },
   agente: { title: 'O laço do agente', blurb: 'Pensar, chamar ferramenta, observar: o agente como máquina de estados.' },
